@@ -1,0 +1,195 @@
+import AppKit
+import SwiftUI
+
+struct SettingsView: View {
+    @EnvironmentObject private var viewModel: TranslationViewModel
+    @EnvironmentObject private var globalController: GlobalTranslationController
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollView {
+                Form {
+                Section("翻译服务") {
+                    Picker("服务", selection: Binding(
+                        get: { viewModel.provider },
+                        set: { viewModel.selectProvider($0) }
+                    )) {
+                        ForEach(ModelProvider.allCases) { provider in
+                            Text(provider.displayName).tag(provider)
+                        }
+                    }
+
+                    if viewModel.provider == .openAIChatGPT {
+                        HStack {
+                            Label(
+                                viewModel.isLoggedIn ? "已通过 ChatGPT OAuth 登录" : "尚未登录 ChatGPT",
+                                systemImage: viewModel.isLoggedIn ? "checkmark.circle.fill" : "person.crop.circle"
+                            )
+                            .foregroundStyle(viewModel.isLoggedIn ? .green : .secondary)
+                            Spacer()
+                            Button(viewModel.isLoggingIn ? "登录中…" : "使用 ChatGPT 登录") {
+                                viewModel.loginWithChatGPT()
+                            }
+                            .disabled(viewModel.isLoggingIn)
+                            .buttonStyle(.borderedProminent)
+                        }
+                        Text("登录会打开浏览器完成 OAuth，并复用本机 Codex CLI 会话。应用不会要求或保存 OpenAI API Key。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        if viewModel.provider == .customAPI {
+                            HStack {
+                                Picker("配置", selection: Binding(
+                                    get: { viewModel.selectedCustomAPIID },
+                                    set: { if let id = $0 { viewModel.selectCustomAPI(id) } }
+                                )) {
+                                    ForEach(viewModel.customAPISources) { source in
+                                        Text(source.displayName).tag(Optional(source.id))
+                                    }
+                                }
+                                Button("添加", systemImage: "plus") { viewModel.addCustomAPI() }
+                                Button("删除", systemImage: "trash") { viewModel.deleteSelectedCustomAPI() }
+                                    .disabled(viewModel.customAPISources.count <= 1)
+                            }
+                            TextField("显示名称，例如 Gemini", text: $viewModel.customAPIDisplayName)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("接口地址，例如 https://example.com/v1/chat/completions", text: $viewModel.customAPIEndpoint)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        SecureField("\(viewModel.provider.shortName) API Key", text: $viewModel.apiKey)
+                            .textFieldStyle(.roundedBorder)
+                        Text(credentialHelp)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if viewModel.provider.supportsModelSelection {
+                    Section("模型与推理") {
+                    Picker("预设模型", selection: Binding(
+                        get: {
+                            viewModel.provider.modelOptions.contains(viewModel.modelName) ? viewModel.modelName : ""
+                        },
+                        set: { if !$0.isEmpty { viewModel.modelName = $0 } }
+                    )) {
+                        Text("自定义模型…").tag("")
+                        ForEach(viewModel.provider.modelOptions, id: \.self) { model in
+                            Text(model).tag(model)
+                        }
+                    }
+                    TextField("模型名称", text: $viewModel.modelName)
+                        .textFieldStyle(.roundedBorder)
+                    Picker("推理强度", selection: $viewModel.reasoningEffort) {
+                        ForEach(ReasoningEffort.allCases) { effort in
+                            Text(effort.displayName).tag(effort)
+                        }
+                    }
+                    Text("Codex OAuth、DeepSeek、智谱和自定义兼容 API 会使用所选模型及 reasoning_effort 参数。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Section("系统权限") {
+                    HStack {
+                        Label(
+                            globalController.accessibilityTrusted ? "辅助功能权限已允许" : "需要辅助功能权限",
+                            systemImage: globalController.accessibilityTrusted ? "checkmark.shield.fill" : "lock.shield"
+                        )
+                        .foregroundStyle(globalController.accessibilityTrusted ? .green : .secondary)
+                        Spacer()
+                        Button("检查并打开设置") {
+                            globalController.requestAccessibilityPermission()
+                        }
+                    }
+                    Text("划词翻译需要辅助功能权限；截图翻译首次使用时，macOS 还会请求屏幕录制权限。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Section("应用显示") {
+                    Toggle("在 Dock 中显示应用", isOn: $globalController.showInDock)
+                    Text("关闭后仍可通过菜单栏图标打开主窗口和设置。保存后立即生效。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("划词翻译") {
+                    Toggle("启用划词监听", isOn: $globalController.selectionEnabled)
+                    Toggle("选中文字后显示翻译图标", isOn: $globalController.showSelectionButton)
+                    Toggle("选中后自动翻译（无需点击）", isOn: $globalController.autoTranslateSelection)
+                    Toggle("划选中英文时自动互译", isOn: $viewModel.translateEnglishSelectionToChinese)
+                    Text("检测到英文时译成中文，检测到中文时译成英文。关闭自动翻译时，选择文字后会显示翻译图标。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Section("快捷键") {
+                    Picker("划词翻译", selection: $globalController.translateShortcutModifiers) {
+                        ForEach(ShortcutModifiers.allCases) { option in
+                            Text("\(option.symbols)T").tag(option)
+                        }
+                    }
+                    Picker("截图 OCR", selection: $globalController.screenshotShortcutModifiers) {
+                        ForEach(ShortcutModifiers.allCases) { option in
+                            Text("\(option.symbols)S").tag(option)
+                        }
+                    }
+                }
+
+                Section("悬浮窗结果来源") {
+                    ForEach(viewModel.allTranslationSources) { source in
+                        Toggle(source.displayName, isOn: Binding(
+                            get: { viewModel.isFloatingSourceEnabled(source) },
+                            set: { viewModel.setFloatingSource(source, enabled: $0) }
+                        ))
+                    }
+                    Text("至少保留一个来源。划词和截图翻译会并行请求已勾选的来源；云服务需要先切换到对应服务并保存凭据。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let errorMessage = viewModel.errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                    .font(.callout)
+            }
+
+            HStack {
+                Spacer()
+                Button("取消") { dismiss() }
+                    .keyboardShortcut(.escape)
+                Button("保存") {
+                    viewModel.saveSettings()
+                    globalController.saveSelectionPreferences()
+                    dismiss()
+                }
+                .keyboardShortcut(.return)
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(width: 680, height: 560)
+        .onAppear {
+            viewModel.refreshLoginStatus()
+            globalController.refreshAccessibilityStatus()
+        }
+    }
+
+    private var credentialHelp: String {
+        viewModel.provider == .customAPI
+            ? "支持 OpenAI Chat Completions 兼容接口；API Key 只保存在本机钥匙串中。"
+            : "API Key 只保存在本机钥匙串中。"
+    }
+
+}

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="760" viewBox="0 0 1320 760">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F7F9FC"/><stop offset="1" stop-color="#E9EEF7"/></linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#1685FF"/><stop offset=".55" stop-color="#4169F1"/><stop offset="1" stop-color="#7057E8"/></linearGradient>
+    <linearGradient id="front" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#216EF5"/><stop offset="1" stop-color="#5A5CEB"/></linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="15" stdDeviation="18" flood-color="#1C315C" flood-opacity=".24"/></filter>
+    <filter id="cardshadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#142752" flood-opacity=".22"/></filter>
+    <g id="menuMark" fill="none" stroke="currentColor" stroke-width="13" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M25 29 H91 Q102 29 102 40 V94 Q102 105 91 105 H53 L30 122 L34 105 H25 Q14 105 14 94 V40 Q14 29 25 29Z" fill="currentColor" stroke="none"/>
+      <path d="M69 57 H133 Q144 57 144 68 V122 Q144 133 133 133 H116 L120 150 L97 133 H69 Q58 133 58 122 V68 Q58 57 69 57Z"/>
+      <path d="M112 27 C128 29 139 39 143 53 M133 45 L144 54 L149 40"/>
+      <path d="M46 145 C30 143 19 133 15 119 M25 127 L14 118 L9 132"/>
+    </g>
+  </defs>
+
+  <rect width="1320" height="760" rx="34" fill="url(#page)"/>
+  <text x="64" y="72" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="31" font-weight="700" fill="#172033">AI 翻译助手 · 参考构图重绘</text>
+  <text x="64" y="110" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="18" fill="#667085">双语言卡片 + 双向箭头 · Dock 与菜单栏使用同一轮廓语言</text>
+
+  <rect x="55" y="150" width="570" height="555" rx="30" fill="#fff"/>
+  <text x="90" y="200" font-family="-apple-system,sans-serif" font-size="22" font-weight="700" fill="#172033">Dock / 应用图标</text>
+  <g filter="url(#shadow)">
+    <rect x="150" y="235" width="380" height="380" rx="92" fill="url(#tile)"/>
+    <rect x="155" y="240" width="370" height="370" rx="87" fill="none" stroke="#fff" stroke-opacity=".2" stroke-width="5"/>
+  </g>
+  <!-- rear language card -->
+  <g filter="url(#cardshadow)">
+    <path d="M300 365 Q300 338 327 338 H455 Q482 338 482 365 V500 Q482 527 455 527 H417 L419 559 L378 527 H327 Q300 527 300 500Z" fill="#fff" fill-opacity=".98"/>
+  </g>
+  <text x="392" y="472" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="104" font-weight="650" fill="#4564ED">A</text>
+  <!-- front language card -->
+  <g filter="url(#cardshadow)">
+    <path d="M205 312 Q205 285 232 285 H360 Q387 285 387 312 V447 Q387 474 360 474 H309 L268 506 L270 474 H232 Q205 474 205 447Z" fill="url(#front)"/>
+  </g>
+  <text x="296" y="420" text-anchor="middle" font-family="PingFang SC,-apple-system,sans-serif" font-size="108" font-weight="650" fill="#fff">中</text>
+  <!-- exchange arrows -->
+  <path d="M397 287 C437 287 467 303 483 331" fill="none" stroke="#fff" stroke-width="18" stroke-linecap="round"/>
+  <path d="M466 315 L486 335 L492 307" fill="none" stroke="#fff" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M286 544 C246 544 216 528 200 500" fill="none" stroke="#fff" stroke-width="18" stroke-linecap="round"/>
+  <path d="M217 516 L197 496 L191 524" fill="none" stroke="#fff" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="665" y="150" width="600" height="250" rx="30" fill="#fff"/>
+  <text x="700" y="200" font-family="-apple-system,sans-serif" font-size="22" font-weight="700" fill="#172033">浅色菜单栏</text>
+  <rect x="700" y="232" width="530" height="112" rx="16" fill="#EFF2F6"/>
+  <g color="#20242B" transform="translate(733 244) scale(.56)"><use href="#menuMark"/></g>
+  <text x="846" y="294" font-family="-apple-system,sans-serif" font-size="19" font-weight="600" fill="#20242B">AI 翻译助手</text>
+
+  <rect x="665" y="435" width="600" height="270" rx="30" fill="#24262B"/>
+  <text x="700" y="485" font-family="-apple-system,sans-serif" font-size="22" font-weight="700" fill="#fff">深色菜单栏</text>
+  <rect x="700" y="517" width="530" height="112" rx="16" fill="#101216"/>
+  <g color="#F5F6F7" transform="translate(733 529) scale(.56)"><use href="#menuMark"/></g>
+  <text x="846" y="579" font-family="-apple-system,sans-serif" font-size="19" font-weight="600" fill="#F5F6F7">AI 翻译助手</text>
+</svg>

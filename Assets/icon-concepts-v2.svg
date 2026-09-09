@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="760" viewBox="0 0 1500 760">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F7F9FC"/><stop offset="1" stop-color="#E9EEF7"/></linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#1283FF"/><stop offset="1" stop-color="#6558EE"/></linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#00A8C9"/><stop offset="1" stop-color="#1769E0"/></linearGradient>
+    <linearGradient id="dark" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#1B2538"/><stop offset="1" stop-color="#32476A"/></linearGradient>
+    <filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#273653" flood-opacity=".2"/></filter>
+
+    <!-- A: two continuous ribbons, central exchange diamond -->
+    <g id="markA" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M34 56 C34 31 58 18 79 31 L117 54 C139 67 139 98 117 111 L94 124"/>
+      <path d="M126 104 C126 129 102 142 81 129 L43 106 C21 93 21 62 43 49 L66 36"/>
+      <path d="M55 80 H105"/>
+      <path d="M94 68 L106 80 L94 92"/>
+    </g>
+
+    <!-- B: compact dialog bubble + bidirectional cut -->
+    <g id="markB" fill="none" stroke="currentColor" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M30 31 H130 Q144 31 144 45 V108 Q144 122 130 122 H77 L49 143 L54 122 H30 Q16 122 16 108 V45 Q16 31 30 31 Z"/>
+      <path d="M45 66 H112 M101 55 L113 66 L101 77"/>
+      <path d="M115 91 H48 M59 80 L47 91 L59 102"/>
+    </g>
+
+    <!-- C: single monoline orbital exchange -->
+    <g id="markC" fill="none" stroke="currentColor" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M31 83 C31 48 54 25 83 25 C105 25 125 39 134 59"/>
+      <path d="M121 54 L136 61 L140 45"/>
+      <path d="M129 77 C129 112 106 135 77 135 C55 135 35 121 26 101"/>
+      <path d="M39 106 L24 99 L20 115"/>
+      <path d="M51 80 H109 M98 68 L110 80 L98 92"/>
+    </g>
+  </defs>
+
+  <rect width="1500" height="760" rx="34" fill="url(#bg)"/>
+  <text x="64" y="72" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="31" font-weight="700" fill="#172033">AI 翻译助手 · 极简图标提案</text>
+  <text x="64" y="110" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="18" fill="#667085">统一的 Dock 彩色图标与菜单栏单色剪影 · 无文字 · 16 px 可辨识</text>
+
+  <!-- cards -->
+  <g transform="translate(55 150)">
+    <rect width="430" height="555" rx="28" fill="#fff"/>
+    <text x="30" y="50" font-family="-apple-system,sans-serif" font-size="22" font-weight="700" fill="#172033">A · 交织双向带</text>
+    <text x="30" y="80" font-family="-apple-system,sans-serif" font-size="15" fill="#667085">AI 几何感最强，简洁、独立</text>
+    <g filter="url(#s)"><rect x="60" y="115" width="310" height="310" rx="72" fill="url(#blue)"/></g>
+    <g color="#fff" transform="translate(135 190) scale(1.95)"><use href="#markA"/></g>
+    <rect x="30" y="462" width="370" height="62" rx="14" fill="#EEF1F5"/>
+    <g color="#20242B" transform="translate(50 471) scale(.28)"><use href="#markA"/></g>
+    <text x="112" y="500" font-family="-apple-system,sans-serif" font-size="17" fill="#20242B">AI 翻译助手</text>
+  </g>
+
+  <g transform="translate(535 150)">
+    <rect width="430" height="555" rx="28" fill="#fff"/>
+    <text x="30" y="50" font-family="-apple-system,sans-serif" font-size="22" font-weight="700" fill="#172033">B · 双向对话框</text>
+    <text x="30" y="80" font-family="-apple-system,sans-serif" font-size="15" fill="#667085">翻译语义最直接，亲和易懂</text>
+    <g filter="url(#s)"><rect x="60" y="115" width="310" height="310" rx="72" fill="url(#cyan)"/></g>
+    <g color="#fff" transform="translate(135 190) scale(1.95)"><use href="#markB"/></g>
+    <rect x="30" y="462" width="370" height="62" rx="14" fill="#EEF1F5"/>
+    <g color="#20242B" transform="translate(50 471) scale(.28)"><use href="#markB"/></g>
+    <text x="112" y="500" font-family="-apple-system,sans-serif" font-size="17" fill="#20242B">AI 翻译助手</text>
+  </g>
+
+  <g transform="translate(1015 150)">
+    <rect width="430" height="555" rx="28" fill="#fff"/>
+    <text x="30" y="50" font-family="-apple-system,sans-serif" font-size="22" font-weight="700" fill="#172033">C · 智能交换环</text>
+    <text x="30" y="80" font-family="-apple-system,sans-serif" font-size="15" fill="#667085">最克制，菜单栏识别度最高</text>
+    <g filter="url(#s)"><rect x="60" y="115" width="310" height="310" rx="72" fill="url(#dark)"/></g>
+    <g color="#fff" transform="translate(135 190) scale(1.95)"><use href="#markC"/></g>
+    <rect x="30" y="462" width="370" height="62" rx="14" fill="#EEF1F5"/>
+    <g color="#20242B" transform="translate(50 471) scale(.28)"><use href="#markC"/></g>
+    <text x="112" y="500" font-family="-apple-system,sans-serif" font-size="17" fill="#20242B">AI 翻译助手</text>
+  </g>
+</svg>

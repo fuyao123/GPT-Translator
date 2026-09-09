@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f5f7fb"/>
+      <stop offset="1" stop-color="#e9edf5"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#247AF2"/>
+      <stop offset="0.52" stop-color="#5368ED"/>
+      <stop offset="1" stop-color="#8752E7"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#20304f" flood-opacity="0.22"/>
+    </filter>
+    <g id="translation-mark">
+      <!-- Three opposing arrow pairs form an original six-segment exchange loop. -->
+      <path d="M50 15 C69 15 84 25 93 40 L103 34 L99 58 L76 50 L87 44 C80 33 67 27 52 27 Z" fill="currentColor"/>
+      <path d="M112 43 C122 59 124 77 117 93 L128 97 L108 112 L94 92 L105 95 C110 83 108 68 101 56 Z" fill="currentColor"/>
+      <path d="M116 105 C106 121 90 130 73 132 L75 144 L53 133 L66 112 L68 123 C82 122 95 115 103 103 Z" fill="currentColor"/>
+      <path d="M60 132 C42 129 27 119 19 104 L9 110 L12 86 L36 94 L25 100 C32 111 44 118 58 120 Z" fill="currentColor"/>
+      <path d="M16 94 C7 78 7 59 15 44 L4 39 L25 26 L38 47 L27 43 C21 55 21 70 28 82 Z" fill="currentColor"/>
+      <path d="M22 37 C34 23 50 15 68 15 L67 3 L88 16 L73 36 L72 25 C58 24 45 30 36 41 Z" fill="currentColor"/>
+      <path d="M48 55 L70 55 L70 47 L92 66 L70 85 L70 77 L48 77 Z" fill="currentColor" opacity="0.96"/>
+      <path d="M92 91 L70 91 L70 99 L48 80 L70 61 L70 69 L92 69 Z" fill="currentColor" opacity="0.96" transform="translate(0 18)"/>
+    </g>
+  </defs>
+
+  <rect width="1200" height="700" rx="34" fill="url(#page)"/>
+  <text x="64" y="72" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="30" font-weight="700" fill="#172033">AI 翻译助手 · 图标视觉稿</text>
+  <text x="64" y="108" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="17" fill="#667085">原创六段交换环：Dock 彩色完整版本与菜单栏单色简化版本使用同一视觉母题</text>
+
+  <rect x="55" y="145" width="520" height="500" rx="28" fill="#ffffff"/>
+  <text x="90" y="196" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="20" font-weight="650" fill="#172033">Dock / 应用图标</text>
+  <g filter="url(#shadow)">
+    <rect x="130" y="235" width="370" height="370" rx="88" fill="url(#tile)"/>
+    <rect x="134" y="239" width="362" height="362" rx="84" fill="none" stroke="#fff" stroke-opacity="0.22" stroke-width="5"/>
+  </g>
+  <g color="#fff" transform="translate(166 271) scale(2.12)">
+    <use href="#translation-mark"/>
+  </g>
+
+  <rect x="605" y="145" width="540" height="235" rx="28" fill="#ffffff"/>
+  <text x="640" y="196" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="20" font-weight="650" fill="#172033">浅色菜单栏</text>
+  <rect x="640" y="225" width="470" height="105" rx="15" fill="#f2f3f5"/>
+  <g color="#1f2328" transform="translate(680 241) scale(.46)">
+    <use href="#translation-mark"/>
+  </g>
+  <text x="770" y="289" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="18" fill="#30343b">AI 翻译助手</text>
+
+  <rect x="605" y="410" width="540" height="235" rx="28" fill="#25262a"/>
+  <text x="640" y="461" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="20" font-weight="650" fill="#f5f6f7">深色菜单栏</text>
+  <rect x="640" y="490" width="470" height="105" rx="15" fill="#101114"/>
+  <g color="#f4f5f6" transform="translate(680 506) scale(.46)">
+    <use href="#translation-mark"/>
+  </g>
+  <text x="770" y="554" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="18" fill="#f4f5f6">AI 翻译助手</text>
+</svg>

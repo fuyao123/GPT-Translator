@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="38" viewBox="0 0 48 38">
+  <text x="14" y="23" text-anchor="middle" font-family="PingFang SC,-apple-system,Arial,sans-serif" font-size="22" font-weight="700" fill="black" transform="rotate(-12 14 19)">中</text>
+  <text x="34" y="30" text-anchor="middle" font-family="-apple-system,Arial,sans-serif" font-size="24" font-weight="700" fill="black" transform="rotate(12 34 24)">A</text>
+  <g fill="none" stroke="black" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 9C18 1 32 1 39 9M35 5L40 9L35 12"/>
+    <path d="M38 30C30 38 16 38 9 29M13 34L8 29L13 26"/>
+  </g>
+</svg>

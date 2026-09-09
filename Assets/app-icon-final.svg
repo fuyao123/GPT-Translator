@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#1685FF"/>
+      <stop offset=".55" stop-color="#4169F1"/>
+      <stop offset="1" stop-color="#7057E8"/>
+    </linearGradient>
+    <linearGradient id="front" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#216EF5"/>
+      <stop offset="1" stop-color="#5A5CEB"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="24" stdDeviation="30" flood-color="#172B56" flood-opacity=".24"/>
+    </filter>
+    <filter id="cardshadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#142752" flood-opacity=".24"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="none"/>
+  <g filter="url(#shadow)">
+    <rect x="62" y="62" width="900" height="900" rx="220" fill="url(#tile)"/>
+    <rect x="70" y="70" width="884" height="884" rx="212" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="10"/>
+  </g>
+  <g filter="url(#cardshadow)">
+    <path d="M432 355 Q432 305 482 305 H746 Q796 305 796 355 V635 Q796 685 746 685 H671 L677 750 L595 685 H482 Q432 685 432 635Z" fill="#fff" fill-opacity=".98"/>
+  </g>
+  <text x="616" y="574" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Arial,sans-serif" font-size="218" font-weight="650" fill="#4A62E8">A</text>
+  <g filter="url(#cardshadow)">
+    <path d="M228 250 Q228 200 278 200 H542 Q592 200 592 250 V530 Q592 580 542 580 H435 L353 645 L359 580 H278 Q228 580 228 530Z" fill="url(#front)"/>
+  </g>
+  <text x="410" y="474" text-anchor="middle" font-family="PingFang SC,-apple-system,sans-serif" font-size="220" font-weight="650" fill="#fff">中</text>
+</svg>
