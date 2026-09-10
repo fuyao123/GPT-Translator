@@ -68,35 +68,53 @@ struct MenuBarView: View {
             .help("关闭后，划词和截图识别到中文时不调用翻译接口")
 
             Button {
+                globalController.captureScreenshot()
+            } label: {
+                HStack(spacing: 6) {
+                    Label("普通截图", systemImage: "camera.viewfinder")
+                    Text(globalController.captureShortcutDescription)
+                        .foregroundStyle(.secondary)
+                }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .disabled(globalController.isCapturing)
+            .buttonStyle(.borderless)
+
+            Button {
                 globalController.translateScreenshot()
             } label: {
-                HStack {
+                HStack(spacing: 6) {
                     Label(globalController.isCapturing ? "截图处理中…" : "截图翻译（OCR）", systemImage: "viewfinder")
-                    Spacer()
                     Text(globalController.screenshotShortcutDescription)
                         .foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .disabled(globalController.isCapturing)
+            .buttonStyle(.borderless)
 
             Button {
                 globalController.toggleQuickTranslationInput()
             } label: {
-                HStack {
+                HStack(spacing: 6) {
                     Label("快捷翻译输入框", systemImage: "text.magnifyingglass")
-                    Spacer()
                     Text(globalController.quickInputShortcutDescription)
                         .foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .buttonStyle(.borderless)
 
             Divider()
 
             Button("打开主窗口", systemImage: "macwindow") { showMainWindow() }
+                .buttonStyle(.borderless)
             Button("设置", systemImage: "gearshape") { showSettings() }
+                .buttonStyle(.borderless)
 
             HStack {
                 Button("退出", systemImage: "power") { NSApp.terminate(nil) }
+                    .buttonStyle(.borderless)
                 Spacer()
                 updateControl
             }
@@ -104,6 +122,7 @@ struct MenuBarView: View {
         .padding(14)
         .frame(width: 310)
         .onAppear {
+            globalController.connect(to: viewModel)
             viewModel.startConnectionMonitoring()
             Task { await viewModel.checkForUpdates() }
         }

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project_dir="${0:A:h:h}"
-version="${1:-0.2.1}"
+version="${1:-1.0.0}"
 release_dir="$project_dir/dist"
 work_dir="$(mktemp -d)"
 app_dir="$work_dir/app"

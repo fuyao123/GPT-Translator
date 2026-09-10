@@ -9,7 +9,7 @@ final class AppleTranslationService {
         case systemTooOld
         case languageUndetected
         case unsupportedPair
-        case languagePackNotInstalled
+        case languagePackNotInstalled(source: String, target: String)
 
         var errorDescription: String? {
             switch self {
@@ -19,8 +19,8 @@ final class AppleTranslationService {
                 return "Apple 翻译无法识别原文语言。"
             case .unsupportedPair:
                 return "Apple 翻译不支持这个语言组合。"
-            case .languagePackNotInstalled:
-                return "Apple 翻译语言包尚未下载，请先在系统“翻译”App 或系统设置中下载后再使用。"
+            case .languagePackNotInstalled(let source, let target):
+                return "Apple 翻译缺少 \(source) 或 \(target) 语言包。请在系统设置“通用 → 语言与地区 → 翻译语言”中下载这两种语言后再使用。"
             }
         }
     }
@@ -45,7 +45,10 @@ final class AppleTranslationService {
         case .installed:
             break
         case .supported:
-            throw ServiceError.languagePackNotInstalled
+            throw ServiceError.languagePackNotInstalled(
+                source: languageDisplayName(sourceLanguage),
+                target: languageDisplayName(targetLanguage)
+            )
         case .unsupported:
             throw ServiceError.unsupportedPair
         @unknown default:
@@ -70,7 +73,10 @@ final class AppleTranslationService {
         case .installed:
             return
         case .supported:
-            throw ServiceError.languagePackNotInstalled
+            throw ServiceError.languagePackNotInstalled(
+                source: languageDisplayName(sourceLanguage),
+                target: languageDisplayName(targetLanguage)
+            )
         case .unsupported:
             throw ServiceError.unsupportedPair
         @unknown default:
@@ -85,10 +91,76 @@ final class AppleTranslationService {
 
     private func resolvedSourceLanguage(_ source: LanguageOption, text: String) throws -> Locale.Language {
         if let language = source.localeLanguage { return language }
-        guard let detected = NLLanguageRecognizer.dominantLanguage(for: text) else {
+
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else { throw ServiceError.languageUndetected }
+
+        guard let detected = NLLanguageRecognizer.dominantLanguage(for: trimmedText) else {
+            if looksLikeLatinText(trimmedText) {
+                return Locale.Language(identifier: "en")
+            }
             throw ServiceError.languageUndetected
         }
+
+        // NaturalLanguage can assign a short English brand name or acronym to an
+        // unrelated language (for example, "Gemini" -> Turkish and "OK" -> Polish).
+        // If that language is outside the app's supported language set, a short
+        // Latin-script input is safer to treat as English than to report a false
+        // missing-language-pack error.
+        if shouldPreferEnglish(for: trimmedText, detected: detected) {
+            return Locale.Language(identifier: "en")
+        }
+
         return Locale.Language(identifier: detected.rawValue)
+    }
+
+    private func shouldPreferEnglish(for text: String, detected: NLLanguage) -> Bool {
+        guard looksLikeLatinText(text) else { return false }
+
+        let supportedLanguageCodes: Set<String> = [
+            NLLanguage.english.rawValue,
+            NLLanguage.simplifiedChinese.rawValue,
+            NLLanguage.traditionalChinese.rawValue,
+            NLLanguage.japanese.rawValue,
+            NLLanguage.korean.rawValue,
+            NLLanguage.spanish.rawValue,
+            NLLanguage.french.rawValue,
+            NLLanguage.german.rawValue
+        ]
+        guard !supportedLanguageCodes.contains(detected.rawValue) else { return false }
+
+        let wordCount = text.split(whereSeparator: { $0.isWhitespace || $0.isPunctuation }).count
+        return text.count <= 40 || wordCount <= 4
+    }
+
+    private func looksLikeLatinText(_ text: String) -> Bool {
+        let letters = text.unicodeScalars.filter { CharacterSet.letters.contains($0) }
+        guard !letters.isEmpty else { return false }
+
+        return letters.allSatisfy { scalar in
+            switch scalar.value {
+            case 0x0041...0x024F, 0x1E00...0x1EFF, 0x2C60...0x2C7F, 0xA720...0xA7FF:
+                return true
+            default:
+                return false
+            }
+        }
+    }
+
+    private func languageDisplayName(_ language: Locale.Language) -> String {
+        let identifier = (language.languageCode?.identifier ?? language.minimalIdentifier).lowercased()
+        switch identifier {
+        case "en", "en-us", "en-gb": return "English"
+        case "zh", "zh-cn", "zh-hans", "zh-hans-cn": return "中文"
+        case "ja", "ja-jp": return "日本語"
+        case "ko", "ko-kr": return "한국어"
+        case "es", "es-es": return "Español"
+        case "fr", "fr-fr": return "Français"
+        case "de", "de-de": return "Deutsch"
+        default:
+            let code = identifier.split(separator: "-").first.map(String.init) ?? identifier
+            return Locale.current.localizedString(forLanguageCode: code) ?? identifier
+        }
     }
 }
 

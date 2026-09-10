@@ -38,10 +38,27 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                    } else if viewModel.provider == .antigravityOAuth {
+                        Label(
+                            viewModel.providerReady ? "已找到官方 Antigravity CLI" : "未找到 Antigravity CLI（agy）",
+                            systemImage: viewModel.providerReady ? "checkmark.circle.fill" : "terminal"
+                        )
+                        .foregroundStyle(viewModel.providerReady ? .green : .secondary)
+                        Text("使用 agy 自己管理的 Google OAuth 登录会话。应用不会读取、复制或打包 OAuth Token；当前固定使用 \(ModelProvider.antigravityFastModel)（低推理）以优先降低翻译延迟。首次使用请先在终端运行 agy 完成 Google 登录。连接测试会发出一次极短请求，并可能受 Google 地区与额度限制。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     } else if viewModel.provider == .appleTranslation {
                         Label("无需账号或 API Key", systemImage: "apple.logo")
                             .foregroundStyle(.secondary)
-                        Text("使用系统翻译语言包，本地处理且不消耗云端 token。缺少语言包时，首次翻译会由 macOS 提示下载；下载完成后即可离线使用。")
+                        Text("使用系统翻译语言包，本地处理且不消耗云端 token。缺少语言包时，请先在系统“翻译”App 或系统设置中下载；下载完成后即可离线使用。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else if viewModel.provider == .googleWeb {
+                        Label("无需账号或 API Key", systemImage: "globe")
+                            .foregroundStyle(.secondary)
+                        Text("使用 Google 网页翻译的非官方公共接口，可能受网络环境或请求频率限制；HTTP 429 时请切换其他翻译源。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -67,6 +84,10 @@ struct SettingsView: View {
                         }
                         SecureField("\(viewModel.provider.shortName) API Key", text: $viewModel.apiKey)
                             .textFieldStyle(.roundedBorder)
+                        Button("重新授权钥匙串读取", systemImage: "key") {
+                            viewModel.authorizeSelectedAPIKeyFromKeychain()
+                        }
+                        .help("仅在你主动点击时显示钥匙串授权；启动和后台检测不会弹窗")
                         Text(credentialHelp)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -94,7 +115,7 @@ struct SettingsView: View {
                             Text(effort.displayName).tag(effort)
                         }
                     }
-                    Text("Codex OAuth、DeepSeek、智谱和自定义兼容 API 会使用所选模型及 reasoning_effort 参数。")
+                    Text("Codex OAuth、DeepSeek、智谱和自定义兼容 API 会使用所选模型及 reasoning_effort 参数。Antigravity OAuth 使用 agy 当前账号可用的 Gemini 模型。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -121,9 +142,11 @@ struct SettingsView: View {
 
                 Section("应用显示") {
                     Toggle("在 Dock 中显示应用", isOn: $globalController.showInDock)
-                    Text("关闭后仍可通过菜单栏图标打开主窗口和设置。保存后立即生效。")
+                    Toggle("登录时自动启动", isOn: $globalController.launchAtLogin)
+                    Text("隐藏 Dock 图标后仍可通过菜单栏图标打开主窗口和设置；自动启动由 macOS 登录项管理。当前状态：\(globalController.launchAtLoginStatusDescription)。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Section("划词翻译") {
@@ -150,20 +173,25 @@ struct SettingsView: View {
                         key: $globalController.translateShortcutKey
                     )
                     shortcutPicker(
-                        title: "截图 OCR",
+                        title: "截图翻译（OCR）",
                         modifiers: $globalController.screenshotShortcutModifiers,
                         key: $globalController.screenshotShortcutKey
+                    )
+                    shortcutPicker(
+                        title: "普通截图",
+                        modifiers: $globalController.captureShortcutModifiers,
+                        key: $globalController.captureShortcutKey
                     )
                     shortcutPicker(
                         title: "快捷翻译输入框",
                         modifiers: $globalController.quickInputShortcutModifiers,
                         key: $globalController.quickInputShortcutKey
                     )
-                    Text("菜单栏会显示截图 OCR 和快捷翻译输入框的当前快捷键；划词翻译快捷键仍可在此自定义。")
+                    Text("菜单栏会显示普通截图、截图翻译和快捷翻译输入框的当前快捷键；划词翻译快捷键仍可在此自定义。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if globalController.hasShortcutConflict {
-                        Label("三个功能不能使用相同的快捷键。", systemImage: "exclamationmark.triangle.fill")
+                        Label("四个功能不能使用相同的快捷键。", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
                             .foregroundStyle(.red)
                     }
@@ -197,8 +225,9 @@ struct SettingsView: View {
                     .keyboardShortcut(.escape)
                 Button("保存") {
                     viewModel.saveSettings()
-                    globalController.saveSelectionPreferences()
-                    dismiss()
+                    if globalController.saveSelectionPreferences() {
+                        dismiss()
+                    }
                 }
                 .disabled(globalController.hasShortcutConflict)
                 .keyboardShortcut(.return)
@@ -210,6 +239,7 @@ struct SettingsView: View {
         .onAppear {
             viewModel.refreshLoginStatus()
             globalController.refreshAccessibilityStatus()
+            globalController.refreshLaunchAtLoginStatus()
         }
     }
 

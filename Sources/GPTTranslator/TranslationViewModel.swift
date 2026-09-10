@@ -94,6 +94,11 @@ struct ComparisonTranslationResult: Identifiable, Sendable {
     var id: String { source.id }
 }
 
+struct DefaultFallbackTranslationResult {
+    let text: String
+    let sourceName: String
+}
+
 enum ProviderConnectionState: Equatable, Sendable {
     case checking
     case connected
@@ -129,6 +134,7 @@ final class TranslationViewModel: ObservableObject {
     @Published private(set) var updateState: AppUpdateState = .idle
 
     private let codexService: CodexCLIService
+    private let antigravityService: AntigravityCLIService
     private let directService: DirectProviderService
     let appleService: AppleTranslationService
     private let keychain: KeychainStore
@@ -144,11 +150,13 @@ final class TranslationViewModel: ObservableObject {
 
     init(
         codexService: CodexCLIService = CodexCLIService(),
+        antigravityService: AntigravityCLIService = AntigravityCLIService(),
         directService: DirectProviderService = DirectProviderService(),
         appleService: AppleTranslationService = AppleTranslationService(),
         keychain: KeychainStore = KeychainStore()
     ) {
         self.codexService = codexService
+        self.antigravityService = antigravityService
         self.directService = directService
         self.appleService = appleService
         self.keychain = keychain
@@ -171,9 +179,10 @@ final class TranslationViewModel: ObservableObject {
         self.customAPIEndpoint = initialCustom.endpoint
         let storedModel = UserDefaults.standard.string(forKey: Self.modelKey(for: storedProvider))
             ?? (storedProvider == .openAIChatGPT ? UserDefaults.standard.string(forKey: "modelName") : nil)
+        let obsoleteModels = ["gpt-4.1-mini", "deepseek-chat", "deepseek-reasoner"]
         self.modelName = storedProvider == .customAPI
             ? initialCustom.model
-            : (storedModel == "gpt-4.1-mini" ? storedProvider.defaultModel : (storedModel ?? storedProvider.defaultModel))
+            : (storedModel.map(obsoleteModels.contains) == true ? storedProvider.defaultModel : (storedModel ?? storedProvider.defaultModel))
         self.reasoningEffort = UserDefaults.standard.string(forKey: "reasoningEffort")
             .flatMap(ReasoningEffort.init(rawValue:)) ?? .medium
         if storedProvider == .customAPI {
@@ -206,7 +215,7 @@ final class TranslationViewModel: ObservableObject {
     }
 
     var currentAppVersion: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.1"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
     }
 
     func checkForUpdates(force: Bool = false) async {
@@ -264,9 +273,13 @@ final class TranslationViewModel: ObservableObject {
         switch provider {
         case .openAIChatGPT:
             return isLoggedIn
+        case .antigravityOAuth:
+            return antigravityService.isInstalled()
         case .appleTranslation:
             if #available(macOS 15.0, *) { return true }
             return false
+        case .googleWeb:
+            return true
         case .customAPI:
             guard let config = selectedCustomAPI else { return false }
             return !(keychain.readAPIKey(account: config.keychainAccount) ?? apiKey)
@@ -388,6 +401,14 @@ final class TranslationViewModel: ObservableObject {
         UserDefaults.standard.set(id.uuidString, forKey: "selectedCustomAPIID")
     }
 
+    func authorizeSelectedAPIKeyFromKeychain() {
+        if provider == .customAPI, let config = selectedCustomAPI {
+            apiKey = keychain.readAPIKey(account: config.keychainAccount, allowInteraction: true) ?? ""
+        } else if provider.needsAPIKey {
+            apiKey = keychain.readAPIKey(for: provider, allowInteraction: true) ?? ""
+        }
+    }
+
     func addCustomAPI() {
         persistCurrentProviderSettings()
         let config = CustomAPISource(displayName: "新自定义 API")
@@ -417,6 +438,8 @@ final class TranslationViewModel: ObservableObject {
             isLoggedIn = await codexService.loginStatus()
             if isLoggedIn, provider == .openAIChatGPT {
                 await codexService.warmUp(model: modelName, reasoning: reasoningEffort)
+            } else if provider == .antigravityOAuth {
+                await antigravityService.warmUp()
             }
         }
     }
@@ -476,6 +499,8 @@ final class TranslationViewModel: ObservableObject {
                         model: model,
                         reasoning: reasoning
                     )
+                } else if selectedProvider == .antigravityOAuth {
+                    result = try await antigravityService.translate(text: text, source: source, target: target)
                 } else if selectedProvider == .appleTranslation {
                     result = try await appleService.translate(
                         text: text,
@@ -615,6 +640,8 @@ final class TranslationViewModel: ObservableObject {
                             model: model,
                             reasoning: reasoning
                         )
+                    } else if selectedProvider == .antigravityOAuth {
+                        result = try await antigravityService.translate(text: text, source: source, target: target)
                     } else if selectedProvider == .appleTranslation {
                         result = try await appleService.translate(
                             text: text,
@@ -650,8 +677,45 @@ final class TranslationViewModel: ObservableObject {
     }
 
     func translateQuickInput(_ text: String) async throws -> String {
-        let selectedProvider = provider
-        let selectedModel = modelName
+        let defaultSource = TranslationSource(
+            id: activeSourceID,
+            provider: provider,
+            customAPIID: provider == .customAPI ? selectedCustomAPIID : nil,
+            displayName: activeProviderDisplayName
+        )
+        return try await translateQuickInput(text, with: defaultSource)
+    }
+
+    func translateWithDefaultFallback(_ text: String) async throws -> DefaultFallbackTranslationResult {
+        let defaultSource = TranslationSource(
+            id: activeSourceID,
+            provider: provider,
+            customAPIID: provider == .customAPI ? selectedCustomAPIID : nil,
+            displayName: activeProviderDisplayName
+        )
+        let candidates = [defaultSource] + enabledFloatingSources.filter { $0.id != defaultSource.id }
+        var failures: [String] = []
+        for source in candidates {
+            do {
+                let translated = try await translateQuickInput(text, with: source)
+                return DefaultFallbackTranslationResult(text: translated, sourceName: source.displayName)
+            } catch {
+                failures.append("\(source.displayName)：\(error.localizedDescription)")
+            }
+        }
+        throw NSError(
+            domain: "GPTTranslator.ScreenshotTranslation",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: failures.joined(separator: "；")]
+        )
+    }
+
+    private func translateQuickInput(_ text: String, with sourceConfig: TranslationSource) async throws -> String {
+        let selectedProvider = sourceConfig.provider
+        let customConfig = sourceConfig.customAPIID.flatMap { id in customAPISources.first { $0.id == id } }
+        let selectedModel = customConfig?.model ?? (selectedProvider == provider
+            ? modelName
+            : (UserDefaults.standard.string(forKey: Self.modelKey(for: selectedProvider)) ?? selectedProvider.defaultModel))
         let target = floatingTargetLanguage(for: text)
         let source: LanguageOption = target == .english ? .chineseSimplified : .english
         if selectedProvider == .openAIChatGPT {
@@ -662,6 +726,10 @@ final class TranslationViewModel: ObservableObject {
                 model: selectedModel,
                 reasoning: .none
             )
+        }
+
+        if selectedProvider == .antigravityOAuth {
+            return try await antigravityService.translate(text: text, source: source, target: target)
         }
 
         if selectedProvider == .appleTranslation {
@@ -676,11 +744,11 @@ final class TranslationViewModel: ObservableObject {
 
         let selectedKey: String
         let endpoint: String
-        if selectedProvider == .customAPI, let config = selectedCustomAPI {
+        if selectedProvider == .customAPI, let config = customConfig {
             selectedKey = keychain.readAPIKey(account: config.keychainAccount) ?? apiKey
             endpoint = config.endpoint
         } else {
-            selectedKey = apiKey
+            selectedKey = selectedProvider == provider ? apiKey : (keychain.readAPIKey(for: selectedProvider) ?? "")
             endpoint = ""
         }
         return try await directService.translate(
@@ -864,6 +932,12 @@ final class TranslationViewModel: ObservableObject {
                 reasoning: reasoningEffort
             )
             isLoggedIn = true
+        } else if provider == .antigravityOAuth {
+            _ = try await antigravityService.translate(
+                text: testText,
+                source: sourceLanguage,
+                target: target
+            )
         } else if provider == .appleTranslation {
             try await appleService.testInstalledPair(
                 source: sourceLanguage,

@@ -2,8 +2,14 @@ import AppKit
 import SwiftUI
 
 final class QuickTranslationPanel: NSPanel {
+    var closeHandler: (() -> Void)?
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func performClose(_ sender: Any?) {
+        closeHandler?()
+    }
 }
 
 struct QuickTranslationInputView: View {
@@ -36,13 +42,15 @@ struct QuickTranslationInputView: View {
                 .foregroundStyle(controller.isQuickInputPinned ? Color.accentColor : Color.secondary)
                 .help(controller.isQuickInputPinned ? "取消置顶" : "置顶窗口")
                 Button {
-                    controller.closeQuickTranslationInput()
+                    controller.clearQuickTranslationInput()
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    Text("清除")
+                        .font(.callout)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .keyboardShortcut(.cancelAction)
+                .disabled(controller.quickInputText.isEmpty && controller.quickInputTranslation.isEmpty)
+                .help("清除输入内容")
             }
 
             Divider()
@@ -138,5 +146,6 @@ struct QuickTranslationInputView: View {
             AppleTranslationBridgeHost(service: controller.appleTranslationService)
         }
         .onAppear { inputFocused = true }
+        .onExitCommand { controller.closeQuickTranslationInput() }
     }
 }

@@ -4,11 +4,24 @@ set -euo pipefail
 project_dir="${0:A:h:h}"
 cd "$project_dir"
 
-swift build -c release
-binary_path="$(swift build -c release --show-bin-path)/GPTTranslator"
+build_args=(-c release)
+if ! swift build "${build_args[@]}"; then
+    # Some Command Line Tools releases cannot expand the current SwiftUI macro
+    # plugin through the default Swift Build engine. Keep a reproducible fallback
+    # for this Mac without changing the source package or the user's credentials.
+    fallback_sdk="${GPT_TRANSLATOR_SDK:-/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk}"
+    if [[ ! -d "$fallback_sdk" ]]; then
+        print -u2 "Swift build failed and fallback SDK was not found: $fallback_sdk"
+        exit 1
+    fi
+    fallback_scratch="$(mktemp -d /tmp/gpttranslator-build.XXXXXX)"
+    build_args=(--build-system native --sdk "$fallback_sdk" --scratch-path "$fallback_scratch" -c release)
+    swift build "${build_args[@]}"
+fi
+binary_path="$(swift build "${build_args[@]}" --show-bin-path)/GPTTranslator"
 applications_dir="${APP_OUTPUT_DIR:-$HOME/Applications}"
 app_path="$applications_dir/GPT翻译助手.app"
-app_version="${APP_VERSION:-0.2.1}"
+app_version="${APP_VERSION:-1.0.0}"
 
 mkdir -p "$applications_dir"
 rm -rf "$app_path"
