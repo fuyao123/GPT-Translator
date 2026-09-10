@@ -59,18 +59,36 @@ struct MenuBarView: View {
                 }
             ))
 
-            Button {
-                globalController.translateSelection()
-            } label: {
-                Label("翻译所选文字", systemImage: "text.cursor")
-            }
+            Toggle("翻译中文内容", isOn: Binding(
+                get: { viewModel.translateChineseContent },
+                set: {
+                    viewModel.setTranslateChineseContent($0)
+                }
+            ))
+            .help("关闭后，划词和截图识别到中文时不调用翻译接口")
 
             Button {
                 globalController.translateScreenshot()
             } label: {
-                Label(globalController.isCapturing ? "截图处理中…" : "截图翻译（OCR）", systemImage: "viewfinder")
+                HStack {
+                    Label(globalController.isCapturing ? "截图处理中…" : "截图翻译（OCR）", systemImage: "viewfinder")
+                    Spacer()
+                    Text(globalController.screenshotShortcutDescription)
+                        .foregroundStyle(.secondary)
+                }
             }
             .disabled(globalController.isCapturing)
+
+            Button {
+                globalController.toggleQuickTranslationInput()
+            } label: {
+                HStack {
+                    Label("快捷翻译输入框", systemImage: "text.magnifyingglass")
+                    Spacer()
+                    Text(globalController.quickInputShortcutDescription)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             Divider()
 

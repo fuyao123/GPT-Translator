@@ -9,16 +9,21 @@
 - 在任意应用选中文字后按 `⌘⇧T` 翻译
 - 在支持划词的应用中选择文字后显示翻译按钮，点击后在原位置附近显示翻译结果
 - 按 `⌘⇧S` 截图，拖动选择区域后用 macOS Vision OCR，再翻译识别结果
+- 按 `⌘⇧D` 打开类似 Spotlight 的快捷翻译框，自动判断中英文并互译
+- 快捷翻译框支持拖动、钉住、复制、写回原输入框，以及最近 20 条本机历史记录
+- 划词、OCR 和快捷翻译框均可在设置中自定义组合键与字母键，重复快捷键会提示冲突
 - 主窗口停止输入后自动翻译：机器翻译约 0.28 秒触发，GPT 类翻译约 0.48 秒触发
 - 最近 100 条结果使用内存缓存，重复翻译可立即显示
 - 保留段落、Markdown、标点和换行
 - 使用 ChatGPT OAuth：应用不要求、不保存 OpenAI API Key
 - 支持 OpenAI/ChatGPT OAuth、DeepSeek、智谱 GLM，以及可重复添加的 OpenAI Chat Completions 兼容 API
+- 支持 Apple 离线翻译；首次使用缺失语言时由 macOS 下载语言包，之后可离线使用且不消耗 API token（需要 macOS 15 或更高版本）
 - 每个自定义 API 可独立设置显示名称、接口地址、模型和 API Key
 - 划词和截图悬浮窗支持多来源并行对照、拖拽排序和顺序记忆
 - 菜单栏显示所有已开启来源的连接状态，启动时检测，之后每小时检测，也可手动刷新
 - 每个第三方服务和自定义配置的 API Key 独立保存在 macOS 钥匙串
 - 可选择预设或自定义模型，并设置关闭、低、中、高、极高推理强度
+- 可在菜单栏决定是否翻译中文内容，并可选择是否在 Dock 中显示应用
 
 ## 运行
 
@@ -42,7 +47,7 @@ open "$HOME/Applications/GPT翻译助手.app"
 
 ## DMG 安装
 
-从 GitHub Releases 下载 `GPT-Translator-0.1.0-macOS.dmg`，打开后把“GPT 翻译助手”拖入 Applications。当前公开构建未使用 Apple Developer ID 公证；macOS 首次打开时可能需要在 Finder 中右键应用并选择“打开”。
+从 GitHub Releases 下载 `GPT-Translator-0.2.0-macOS.dmg`，打开后把“GPT 翻译助手”拖入 Applications。当前公开构建未使用 Apple Developer ID 公证；macOS 首次打开时可能需要在 Finder 中右键应用并选择“打开”。
 
 ## 隐私与凭据
 

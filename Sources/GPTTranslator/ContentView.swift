@@ -14,6 +14,9 @@ struct ContentView: View {
             footer
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .topLeading) {
+            AppleTranslationBridgeHost(service: viewModel.appleService)
+        }
         .sheet(isPresented: $globalController.showingSettings) {
             SettingsView()
                 .environmentObject(viewModel)

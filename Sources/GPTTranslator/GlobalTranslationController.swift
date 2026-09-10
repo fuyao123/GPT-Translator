@@ -31,14 +31,65 @@ enum ShortcutModifiers: String, CaseIterable, Identifiable {
         case .controlShift: return UInt32(controlKey | shiftKey)
         }
     }
-    var eventFlags: NSEvent.ModifierFlags {
+}
+
+enum ShortcutKey: String, CaseIterable, Identifiable {
+    case a, b, c, d, e, f, g, h, i, j, k, l, m
+    case n, o, p, q, r, s, t, u, v, w, x, y, z
+
+    var id: String { rawValue }
+    var displayName: String { rawValue.uppercased() }
+
+    var carbonKeyCode: UInt32 {
         switch self {
-        case .commandShift: return [.command, .shift]
-        case .commandOption: return [.command, .option]
-        case .controlOption: return [.control, .option]
-        case .controlShift: return [.control, .shift]
+        case .a: return UInt32(kVK_ANSI_A)
+        case .b: return UInt32(kVK_ANSI_B)
+        case .c: return UInt32(kVK_ANSI_C)
+        case .d: return UInt32(kVK_ANSI_D)
+        case .e: return UInt32(kVK_ANSI_E)
+        case .f: return UInt32(kVK_ANSI_F)
+        case .g: return UInt32(kVK_ANSI_G)
+        case .h: return UInt32(kVK_ANSI_H)
+        case .i: return UInt32(kVK_ANSI_I)
+        case .j: return UInt32(kVK_ANSI_J)
+        case .k: return UInt32(kVK_ANSI_K)
+        case .l: return UInt32(kVK_ANSI_L)
+        case .m: return UInt32(kVK_ANSI_M)
+        case .n: return UInt32(kVK_ANSI_N)
+        case .o: return UInt32(kVK_ANSI_O)
+        case .p: return UInt32(kVK_ANSI_P)
+        case .q: return UInt32(kVK_ANSI_Q)
+        case .r: return UInt32(kVK_ANSI_R)
+        case .s: return UInt32(kVK_ANSI_S)
+        case .t: return UInt32(kVK_ANSI_T)
+        case .u: return UInt32(kVK_ANSI_U)
+        case .v: return UInt32(kVK_ANSI_V)
+        case .w: return UInt32(kVK_ANSI_W)
+        case .x: return UInt32(kVK_ANSI_X)
+        case .y: return UInt32(kVK_ANSI_Y)
+        case .z: return UInt32(kVK_ANSI_Z)
         }
     }
+}
+
+enum SelectionTriggerMode: String, CaseIterable, Identifiable {
+    case button
+    case automatic
+
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .button: return "显示翻译按钮"
+        case .automatic: return "自动翻译"
+        }
+    }
+}
+
+struct QuickTranslationHistoryItem: Identifiable, Codable, Equatable {
+    let id: UUID
+    let sourceText: String
+    let translatedText: String
+    let createdAt: Date
 }
 
 @MainActor
@@ -50,34 +101,50 @@ final class GlobalTranslationController: NSObject, ObservableObject {
     @Published var autoTranslateSelection: Bool
     @Published var selectionEnabled: Bool
     @Published var translateShortcutModifiers: ShortcutModifiers
+    @Published var translateShortcutKey: ShortcutKey
     @Published var screenshotShortcutModifiers: ShortcutModifiers
+    @Published var screenshotShortcutKey: ShortcutKey
+    @Published var quickInputShortcutModifiers: ShortcutModifiers
+    @Published var quickInputShortcutKey: ShortcutKey
     @Published var showInDock: Bool
     @Published var showingSettings = false
     @Published private(set) var isResultWindowPinned = false
+    @Published var quickInputText = ""
+    @Published private(set) var quickInputTranslation = ""
+    @Published private(set) var quickInputStatus = ""
+    @Published private(set) var isQuickInputTranslating = false
+    @Published private(set) var isQuickInputPinned = false
+    @Published private(set) var quickInputHistory: [QuickTranslationHistoryItem]
 
     private weak var viewModel: TranslationViewModel?
     private var hotKeyHandler: EventHandlerRef?
     private var translateHotKey: EventHotKeyRef?
     private var screenshotHotKey: EventHotKeyRef?
-    private var globalKeyMonitor: Any?
-    private var localKeyMonitor: Any?
+    private var quickInputHotKey: EventHotKeyRef?
     private var mouseMonitor: Any?
     private var localMouseMonitor: Any?
     private var overlayWindow: NSPanel?
     private var floatingButtonWindow: NSPanel?
     private var resultWindow: NSPanel?
+    private var quickInputWindow: NSPanel?
     private var resultWindowAnchor: NSPoint?
     private var resultSizingSubscription: AnyCancellable?
     private var workspaceActivationObserver: NSObjectProtocol?
+    private var lastExternalApplicationPID: pid_t?
+    private var lastExternalFocusedElement: AXUIElement?
     private var pendingSelectionText: String?
     private var pendingSelectionLocation: NSPoint?
     private var lastShortcutTime = Date.distantPast
     private var resultWindowShownAt = Date.distantPast
     private var hasRequestedScreenCapturePermission = false
+    private var quickInputTargetElement: AXUIElement?
+    private var quickInputTargetPID: pid_t?
+    private var quickInputTranslationTask: Task<Void, Never>?
 
     private static let hotKeySignature: OSType = 0x4750_5452 // GPTR
     private static let translateHotKeyID: UInt32 = 1
     private static let screenshotHotKeyID: UInt32 = 2
+    private static let quickInputHotKeyID: UInt32 = 3
 
     override init() {
         let defaults = UserDefaults.standard
@@ -86,8 +153,18 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         selectionEnabled = defaults.object(forKey: "selectionEnabled") as? Bool ?? true
         translateShortcutModifiers = defaults.string(forKey: "translateShortcutModifiers")
             .flatMap(ShortcutModifiers.init(rawValue:)) ?? .commandShift
+        translateShortcutKey = defaults.string(forKey: "translateShortcutKey")
+            .flatMap(ShortcutKey.init(rawValue:)) ?? .t
         screenshotShortcutModifiers = defaults.string(forKey: "screenshotShortcutModifiers")
             .flatMap(ShortcutModifiers.init(rawValue:)) ?? .commandShift
+        screenshotShortcutKey = defaults.string(forKey: "screenshotShortcutKey")
+            .flatMap(ShortcutKey.init(rawValue:)) ?? .s
+        quickInputShortcutModifiers = defaults.string(forKey: "quickInputShortcutModifiers")
+            .flatMap(ShortcutModifiers.init(rawValue:)) ?? .commandShift
+        quickInputShortcutKey = defaults.string(forKey: "quickInputShortcutKey")
+            .flatMap(ShortcutKey.init(rawValue:)) ?? .d
+        quickInputHistory = defaults.data(forKey: "quickTranslationHistory")
+            .flatMap { try? JSONDecoder().decode([QuickTranslationHistoryItem].self, from: $0) } ?? []
         showInDock = defaults.object(forKey: "showInDock") as? Bool ?? true
         super.init()
     }
@@ -109,6 +186,7 @@ final class GlobalTranslationController: NSObject, ObservableObject {
                 queue: .main
             ) { [weak self] _ in
                 Task { @MainActor [weak self] in
+                    self?.rememberExternalApplicationIfNeeded()
                     self?.hideUnpinnedResultWindowAfterFocusChange()
                 }
             }
@@ -119,21 +197,22 @@ final class GlobalTranslationController: NSObject, ObservableObject {
     func stop() {
         if let translateHotKey { UnregisterEventHotKey(translateHotKey) }
         if let screenshotHotKey { UnregisterEventHotKey(screenshotHotKey) }
+        if let quickInputHotKey { UnregisterEventHotKey(quickInputHotKey) }
         if let hotKeyHandler { RemoveEventHandler(hotKeyHandler) }
-        if let globalKeyMonitor { NSEvent.removeMonitor(globalKeyMonitor) }
-        if let localKeyMonitor { NSEvent.removeMonitor(localKeyMonitor) }
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
         if let localMouseMonitor { NSEvent.removeMonitor(localMouseMonitor) }
         translateHotKey = nil
         screenshotHotKey = nil
+        quickInputHotKey = nil
         hotKeyHandler = nil
-        globalKeyMonitor = nil
-        localKeyMonitor = nil
         mouseMonitor = nil
         localMouseMonitor = nil
         hideFloatingButton()
         resultWindow?.close()
         resultWindow = nil
+        quickInputTranslationTask?.cancel()
+        quickInputWindow?.close()
+        quickInputWindow = nil
         resultSizingSubscription = nil
         if let workspaceActivationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceActivationObserver)
@@ -161,6 +240,10 @@ final class GlobalTranslationController: NSObject, ObservableObject {
                 : "需要辅助功能权限才能读取其他软件中的选中文字。"
             return
         }
+        guard viewModel?.shouldTranslateFloatingText(text) != false else {
+            resultWindow?.orderOut(nil)
+            return
+        }
         logger.info("translateSelection selectedTextLength=\(text.count, privacy: .public)")
         viewModel?.translateForFloatingWindow(text)
     }
@@ -170,14 +253,264 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         UserDefaults.standard.set(autoTranslateSelection, forKey: "autoTranslateSelection")
         UserDefaults.standard.set(selectionEnabled, forKey: "selectionEnabled")
         UserDefaults.standard.set(translateShortcutModifiers.rawValue, forKey: "translateShortcutModifiers")
+        UserDefaults.standard.set(translateShortcutKey.rawValue, forKey: "translateShortcutKey")
         UserDefaults.standard.set(screenshotShortcutModifiers.rawValue, forKey: "screenshotShortcutModifiers")
+        UserDefaults.standard.set(screenshotShortcutKey.rawValue, forKey: "screenshotShortcutKey")
+        UserDefaults.standard.set(quickInputShortcutModifiers.rawValue, forKey: "quickInputShortcutModifiers")
+        UserDefaults.standard.set(quickInputShortcutKey.rawValue, forKey: "quickInputShortcutKey")
         UserDefaults.standard.set(showInDock, forKey: "showInDock")
         applyDockVisibility()
         registerHotKeys()
     }
 
+    var selectionTriggerMode: SelectionTriggerMode {
+        get { autoTranslateSelection ? .automatic : .button }
+        set {
+            autoTranslateSelection = newValue == .automatic
+            showSelectionButton = newValue == .button
+        }
+    }
+
+    var appleTranslationService: AppleTranslationService {
+        guard let viewModel else { preconditionFailure("Translation controller is not connected") }
+        return viewModel.appleService
+    }
+
+    var translateShortcutDescription: String {
+        translateShortcutModifiers.symbols + translateShortcutKey.displayName
+    }
+
+    var screenshotShortcutDescription: String {
+        screenshotShortcutModifiers.symbols + screenshotShortcutKey.displayName
+    }
+
+    var quickInputShortcutDescription: String {
+        quickInputShortcutModifiers.symbols + quickInputShortcutKey.displayName
+    }
+
+    var hasShortcutConflict: Bool {
+        Set([
+            translateShortcutDescription,
+            screenshotShortcutDescription,
+            quickInputShortcutDescription
+        ]).count < 3
+    }
+
     func applyDockVisibility() {
         NSApp.setActivationPolicy(showInDock ? .regular : .accessory)
+    }
+
+    func toggleQuickTranslationInput() {
+        if quickInputWindow?.isVisible == true {
+            closeQuickTranslationInput()
+        } else {
+            showQuickTranslationInput()
+        }
+    }
+
+    func updateQuickInputText(_ text: String) {
+        quickInputText = text
+        quickInputTranslationTask?.cancel()
+        quickInputTranslation = ""
+        quickInputStatus = ""
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            isQuickInputTranslating = false
+            return
+        }
+
+        isQuickInputTranslating = true
+        quickInputTranslationTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled, let self, let viewModel = self.viewModel else { return }
+            do {
+                let result = try await viewModel.translateQuickInput(trimmed)
+                guard !Task.isCancelled, self.quickInputText.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
+                self.quickInputTranslation = result
+                self.quickInputStatus = viewModel.activeProviderDisplayName
+                self.addQuickInputHistory(source: trimmed, translation: result)
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.quickInputStatus = error.localizedDescription
+            }
+            self.isQuickInputTranslating = false
+        }
+    }
+
+    func copyQuickInputTranslation() {
+        guard !quickInputTranslation.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(quickInputTranslation, forType: .string)
+        quickInputStatus = "已复制"
+    }
+
+    func loadQuickInputHistory(_ item: QuickTranslationHistoryItem) {
+        quickInputTranslationTask?.cancel()
+        quickInputText = item.sourceText
+        quickInputTranslation = item.translatedText
+        quickInputStatus = "历史记录"
+        isQuickInputTranslating = false
+    }
+
+    func copyQuickInputHistory(_ item: QuickTranslationHistoryItem) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(item.translatedText, forType: .string)
+        quickInputStatus = "已复制历史译文"
+    }
+
+    func clearQuickInputHistory() {
+        quickInputHistory.removeAll()
+        UserDefaults.standard.removeObject(forKey: "quickTranslationHistory")
+    }
+
+    func insertQuickInputTranslation() {
+        guard !quickInputTranslation.isEmpty else { return }
+        let text = quickInputTranslation
+        let target = quickInputTargetElement
+        let targetPID = quickInputTargetPID
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        guard let targetPID,
+              let targetApplication = NSRunningApplication(processIdentifier: targetPID) else {
+            quickInputStatus = "未找到原应用，译文已复制"
+            return
+        }
+        closeQuickTranslationInput()
+        targetApplication.activate(options: [.activateIgnoringOtherApps])
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard let self else { return }
+            if let target {
+                _ = AXUIElementSetAttributeValue(
+                    target,
+                    kAXFocusedAttribute as CFString,
+                    kCFBooleanTrue
+                )
+            }
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            self.postPasteShortcut()
+        }
+    }
+
+    func toggleQuickInputPinned() {
+        isQuickInputPinned.toggle()
+        quickInputWindow?.hidesOnDeactivate = !isQuickInputPinned
+    }
+
+    func closeQuickTranslationInput() {
+        quickInputTranslationTask?.cancel()
+        quickInputTranslationTask = nil
+        quickInputWindow?.orderOut(nil)
+        quickInputTargetElement = nil
+        quickInputTargetPID = nil
+        isQuickInputTranslating = false
+    }
+
+    private func showQuickTranslationInput() {
+        accessibilityTrusted = AXIsProcessTrusted()
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let currentlyFocused = accessibilityTrusted ? focusedUIElement() : nil
+        var focusedPID: pid_t = 0
+        if let currentlyFocused { _ = AXUIElementGetPid(currentlyFocused, &focusedPID) }
+
+        if let frontmostPID, frontmostPID != ownPID {
+            quickInputTargetPID = frontmostPID
+            lastExternalApplicationPID = frontmostPID
+            if focusedPID == frontmostPID {
+                quickInputTargetElement = currentlyFocused
+                lastExternalFocusedElement = currentlyFocused
+            } else {
+                quickInputTargetElement = nil
+            }
+        } else {
+            quickInputTargetPID = lastExternalApplicationPID
+            quickInputTargetElement = lastExternalFocusedElement
+        }
+        if let target = quickInputTargetElement {
+            var pid: pid_t = 0
+            if AXUIElementGetPid(target, &pid) == .success { quickInputTargetPID = pid }
+        }
+        quickInputText = ""
+        quickInputTranslation = ""
+        quickInputStatus = ""
+        isQuickInputTranslating = false
+
+        let panel = quickInputWindow ?? QuickTranslationPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 430),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        panel.contentView = NSHostingView(rootView: QuickTranslationInputView(controller: self))
+        panel.level = .floating
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.isMovableByWindowBackground = true
+        panel.hidesOnDeactivate = !isQuickInputPinned
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.isReleasedWhenClosed = false
+        quickInputWindow = panel
+
+        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        panel.setFrameOrigin(NSPoint(
+            x: screen.midX - panel.frame.width / 2,
+            y: screen.maxY - panel.frame.height - 120
+        ))
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    private func postPasteShortcut() {
+        guard let source = CGEventSource(stateID: .hidSystemState),
+              let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false) else { return }
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
+    }
+
+    private func addQuickInputHistory(source: String, translation: String) {
+        quickInputHistory.removeAll {
+            $0.sourceText == source && $0.translatedText == translation
+        }
+        quickInputHistory.insert(
+            QuickTranslationHistoryItem(
+                id: UUID(),
+                sourceText: source,
+                translatedText: translation,
+                createdAt: Date()
+            ),
+            at: 0
+        )
+        if quickInputHistory.count > 20 {
+            quickInputHistory.removeLast(quickInputHistory.count - 20)
+        }
+        if let data = try? JSONEncoder().encode(quickInputHistory) {
+            UserDefaults.standard.set(data, forKey: "quickTranslationHistory")
+        }
+    }
+
+    private func rememberExternalApplicationIfNeeded() {
+        guard let application = NSWorkspace.shared.frontmostApplication,
+              application.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+        lastExternalApplicationPID = application.processIdentifier
+        guard accessibilityTrusted, let focused = focusedUIElement() else { return }
+        var pid: pid_t = 0
+        guard AXUIElementGetPid(focused, &pid) == .success,
+              pid == application.processIdentifier else { return }
+        lastExternalFocusedElement = focused
+    }
+
+    private func focusedUIElement() -> AXUIElement? {
+        let systemWide = AXUIElementCreateSystemWide()
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+              let focused,
+              CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
+        return unsafeDowncast(focused, to: AXUIElement.self)
     }
 
     func translateScreenshot() {
@@ -207,6 +540,7 @@ final class GlobalTranslationController: NSObject, ObservableObject {
                     viewModel?.errorMessage = "选区中没有识别到文字。"
                     return
                 }
+                guard viewModel?.shouldTranslateFloatingText(recognizedText) != false else { return }
                 showResultWindow(at: NSEvent.mouseLocation)
                 viewModel?.translateForFloatingWindow(recognizedText)
             } catch {
@@ -260,17 +594,6 @@ final class GlobalTranslationController: NSObject, ObservableObject {
 
         registerHotKeys()
 
-        let keyHandler: (NSEvent) -> Void = { [weak self] event in
-            Task { @MainActor [weak self] in
-                self?.handleKeyEvent(event)
-            }
-        }
-        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: keyHandler)
-        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            keyHandler(event)
-            return event
-        }
-
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.dismissUnpinnedResultIfNeeded(at: NSEvent.mouseLocation)
@@ -287,17 +610,24 @@ final class GlobalTranslationController: NSObject, ObservableObject {
     private func registerHotKeys() {
         if let translateHotKey { UnregisterEventHotKey(translateHotKey) }
         if let screenshotHotKey { UnregisterEventHotKey(screenshotHotKey) }
+        if let quickInputHotKey { UnregisterEventHotKey(quickInputHotKey) }
         translateHotKey = nil
         screenshotHotKey = nil
+        quickInputHotKey = nil
         let translateID = EventHotKeyID(signature: Self.hotKeySignature, id: Self.translateHotKeyID)
         let screenshotID = EventHotKeyID(signature: Self.hotKeySignature, id: Self.screenshotHotKeyID)
+        let quickInputID = EventHotKeyID(signature: Self.hotKeySignature, id: Self.quickInputHotKeyID)
         RegisterEventHotKey(
-            UInt32(kVK_ANSI_T), translateShortcutModifiers.carbonFlags, translateID,
+            translateShortcutKey.carbonKeyCode, translateShortcutModifiers.carbonFlags, translateID,
             GetApplicationEventTarget(), 0, &translateHotKey
         )
         RegisterEventHotKey(
-            UInt32(kVK_ANSI_S), screenshotShortcutModifiers.carbonFlags, screenshotID,
+            screenshotShortcutKey.carbonKeyCode, screenshotShortcutModifiers.carbonFlags, screenshotID,
             GetApplicationEventTarget(), 0, &screenshotHotKey
+        )
+        RegisterEventHotKey(
+            quickInputShortcutKey.carbonKeyCode, quickInputShortcutModifiers.carbonFlags, quickInputID,
+            GetApplicationEventTarget(), 0, &quickInputHotKey
         )
     }
 
@@ -308,19 +638,8 @@ final class GlobalTranslationController: NSObject, ObservableObject {
             translateSelection()
         } else if id == Self.screenshotHotKeyID {
             translateScreenshot()
-        }
-    }
-
-    private func handleKeyEvent(_ event: NSEvent) {
-        let relevant: NSEvent.ModifierFlags = [.command, .shift, .option, .control]
-        let flags = event.modifierFlags.intersection(relevant)
-        guard Date().timeIntervalSince(lastShortcutTime) > 0.3 else { return }
-        if event.keyCode == UInt16(kVK_ANSI_T), flags == translateShortcutModifiers.eventFlags {
-            lastShortcutTime = Date()
-            translateSelection()
-        } else if event.keyCode == UInt16(kVK_ANSI_S), flags == screenshotShortcutModifiers.eventFlags {
-            lastShortcutTime = Date()
-            translateScreenshot()
+        } else if id == Self.quickInputHotKeyID {
+            toggleQuickTranslationInput()
         }
     }
 
@@ -332,6 +651,10 @@ final class GlobalTranslationController: NSObject, ObservableObject {
             try? await Task.sleep(nanoseconds: 180_000_000)
             guard let self, let text = self.selectedText(),
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            guard self.viewModel?.shouldTranslateFloatingText(text) != false else {
+                self.hideFloatingButton()
+                return
+            }
             if self.autoTranslateSelection {
                 self.showResultWindow(at: NSEvent.mouseLocation)
                 self.viewModel?.translateForFloatingWindow(text)
@@ -382,6 +705,10 @@ final class GlobalTranslationController: NSObject, ObservableObject {
 
     @objc private func floatingButtonClicked() {
         guard let text = pendingSelectionText else { return }
+        guard viewModel?.shouldTranslateFloatingText(text) != false else {
+            hideFloatingButton()
+            return
+        }
         let location = pendingSelectionLocation ?? NSEvent.mouseLocation
         hideFloatingButton()
         showResultWindow(at: location)
@@ -677,6 +1004,9 @@ private struct SelectionTranslationView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .overlay(alignment: .topLeading) {
+            AppleTranslationBridgeHost(service: viewModel.appleService)
+        }
     }
 }
 

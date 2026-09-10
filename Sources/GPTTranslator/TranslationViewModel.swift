@@ -118,6 +118,7 @@ final class TranslationViewModel: ObservableObject {
     @Published var customAPIDisplayName: String
     @Published private(set) var customAPISources: [CustomAPISource]
     @Published var selectedCustomAPIID: UUID?
+    @Published var translateChineseContent: Bool
     @Published var translateEnglishSelectionToChinese: Bool
     @Published var resultFontSize: CGFloat
     @Published var floatingSourceIDs: Set<String>
@@ -128,6 +129,7 @@ final class TranslationViewModel: ObservableObject {
 
     private let codexService: CodexCLIService
     private let directService: DirectProviderService
+    let appleService: AppleTranslationService
     private let keychain: KeychainStore
     private var automaticTranslationTask: Task<Void, Never>?
     private var pendingAutomaticTranslation = false
@@ -140,10 +142,12 @@ final class TranslationViewModel: ObservableObject {
     init(
         codexService: CodexCLIService = CodexCLIService(),
         directService: DirectProviderService = DirectProviderService(),
+        appleService: AppleTranslationService = AppleTranslationService(),
         keychain: KeychainStore = KeychainStore()
     ) {
         self.codexService = codexService
         self.directService = directService
+        self.appleService = appleService
         self.keychain = keychain
 
         let storedProvider = UserDefaults.standard.string(forKey: "provider")
@@ -176,6 +180,7 @@ final class TranslationViewModel: ObservableObject {
         } else {
             self.apiKey = storedProvider.needsAPIKey ? (keychain.readAPIKey(for: storedProvider) ?? "") : ""
         }
+        self.translateChineseContent = UserDefaults.standard.object(forKey: "translateChineseContent") as? Bool ?? true
         self.translateEnglishSelectionToChinese = UserDefaults.standard.object(forKey: "translateEnglishSelectionToChinese") as? Bool ?? true
         self.resultFontSize = CGFloat(UserDefaults.standard.object(forKey: "resultFontSize") as? Double ?? 14)
         let customID = Self.customSourceID(initialCustom.id)
@@ -236,6 +241,9 @@ final class TranslationViewModel: ObservableObject {
         switch provider {
         case .openAIChatGPT:
             return isLoggedIn
+        case .appleTranslation:
+            if #available(macOS 15.0, *) { return true }
+            return false
         case .customAPI:
             guard let config = selectedCustomAPI else { return false }
             return !(keychain.readAPIKey(account: config.keychainAccount) ?? apiKey)
@@ -445,6 +453,13 @@ final class TranslationViewModel: ObservableObject {
                         model: model,
                         reasoning: reasoning
                     )
+                } else if selectedProvider == .appleTranslation {
+                    result = try await appleService.translate(
+                        text: text,
+                        source: source,
+                        target: target
+                    )
+                    providerConnectionStates[ModelProvider.appleTranslation.rawValue] = .connected
                 } else {
                     result = try await directService.translate(
                         text: text,
@@ -577,6 +592,13 @@ final class TranslationViewModel: ObservableObject {
                             model: model,
                             reasoning: reasoning
                         )
+                    } else if selectedProvider == .appleTranslation {
+                        result = try await appleService.translate(
+                            text: text,
+                            source: source,
+                            target: target
+                        )
+                        self.providerConnectionStates[ModelProvider.appleTranslation.rawValue] = .connected
                     } else {
                         result = try await directService.translate(
                             text: text,
@@ -602,6 +624,61 @@ final class TranslationViewModel: ObservableObject {
             }
             comparisonTasks.append(task)
         }
+    }
+
+    func translateQuickInput(_ text: String) async throws -> String {
+        let selectedProvider = provider
+        let selectedModel = modelName
+        let target = floatingTargetLanguage(for: text)
+        let source: LanguageOption = target == .english ? .chineseSimplified : .english
+        if selectedProvider == .openAIChatGPT {
+            return try await codexService.translate(
+                text: text,
+                source: source,
+                target: target,
+                model: selectedModel,
+                reasoning: .none
+            )
+        }
+
+        if selectedProvider == .appleTranslation {
+            let result = try await appleService.translate(
+                text: text,
+                source: source,
+                target: target
+            )
+            providerConnectionStates[ModelProvider.appleTranslation.rawValue] = .connected
+            return result
+        }
+
+        let selectedKey: String
+        let endpoint: String
+        if selectedProvider == .customAPI, let config = selectedCustomAPI {
+            selectedKey = keychain.readAPIKey(account: config.keychainAccount) ?? apiKey
+            endpoint = config.endpoint
+        } else {
+            selectedKey = apiKey
+            endpoint = ""
+        }
+        return try await directService.translate(
+            text: text,
+            source: source,
+            target: target,
+            provider: selectedProvider,
+            model: selectedModel,
+            reasoning: .none,
+            apiKey: selectedKey,
+            customEndpoint: endpoint
+        )
+    }
+
+    func shouldTranslateFloatingText(_ text: String) -> Bool {
+        translateChineseContent || !isPredominantlyChinese(text)
+    }
+
+    func setTranslateChineseContent(_ enabled: Bool) {
+        translateChineseContent = enabled
+        UserDefaults.standard.set(enabled, forKey: "translateChineseContent")
     }
 
     func isFloatingSourceEnabled(_ source: TranslationSource) -> Bool {
@@ -684,6 +761,7 @@ final class TranslationViewModel: ObservableObject {
         UserDefaults.standard.set(reasoningEffort.rawValue, forKey: "reasoningEffort")
         UserDefaults.standard.set(Array(floatingSourceIDs).sorted(), forKey: "floatingSourceIDs")
         UserDefaults.standard.set(floatingSourceOrder, forKey: "floatingSourceOrder")
+        UserDefaults.standard.set(translateChineseContent, forKey: "translateChineseContent")
         UserDefaults.standard.set(translateEnglishSelectionToChinese, forKey: "translateEnglishSelectionToChinese")
         UserDefaults.standard.set(Double(resultFontSize), forKey: "resultFontSize")
         Task { await testEnabledProviderConnections() }
@@ -724,6 +802,20 @@ final class TranslationViewModel: ObservableObject {
         return targetLanguage
     }
 
+    private func isPredominantlyChinese(_ text: String) -> Bool {
+        let scalars = text.unicodeScalars.filter { CharacterSet.letters.contains($0) }
+        guard !scalars.isEmpty else { return false }
+        let hanCount = scalars.reduce(into: 0) { count, scalar in
+            switch scalar.value {
+            case 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF:
+                count += 1
+            default:
+                break
+            }
+        }
+        return hanCount > 0 && hanCount * 2 >= scalars.count
+    }
+
     private func performConnectionTest(for translationSource: TranslationSource) async throws {
         let testText = "connection test"
         let sourceLanguage: LanguageOption = .english
@@ -749,6 +841,12 @@ final class TranslationViewModel: ObservableObject {
                 reasoning: reasoningEffort
             )
             isLoggedIn = true
+        } else if provider == .appleTranslation {
+            try await appleService.testInstalledPair(
+                source: sourceLanguage,
+                target: target,
+                sampleText: testText
+            )
         } else {
             _ = try await directService.translate(
                 text: testText,

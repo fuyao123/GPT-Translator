@@ -38,6 +38,13 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                    } else if viewModel.provider == .appleTranslation {
+                        Label("无需账号或 API Key", systemImage: "apple.logo")
+                            .foregroundStyle(.secondary)
+                        Text("使用系统翻译语言包，本地处理且不消耗云端 token。缺少语言包时，首次翻译会由 macOS 提示下载；下载完成后即可离线使用。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     } else {
                         if viewModel.provider == .customAPI {
                             HStack {
@@ -121,25 +128,44 @@ struct SettingsView: View {
 
                 Section("划词翻译") {
                     Toggle("启用划词监听", isOn: $globalController.selectionEnabled)
-                    Toggle("选中文字后显示翻译图标", isOn: $globalController.showSelectionButton)
-                    Toggle("选中后自动翻译（无需点击）", isOn: $globalController.autoTranslateSelection)
-                    Toggle("划选中英文时自动互译", isOn: $viewModel.translateEnglishSelectionToChinese)
-                    Text("检测到英文时译成中文，检测到中文时译成英文。关闭自动翻译时，选择文字后会显示翻译图标。")
+                    Picker("选中后操作", selection: Binding(
+                        get: { globalController.selectionTriggerMode },
+                        set: { globalController.selectionTriggerMode = $0 }
+                    )) {
+                        ForEach(SelectionTriggerMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    Toggle("自动判断中英文翻译方向", isOn: $viewModel.translateEnglishSelectionToChinese)
+                    Text("检测到英文时译成中文，检测到中文时译成英文。是否处理中文可在菜单栏中快速切换。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Section("快捷键") {
-                    Picker("划词翻译", selection: $globalController.translateShortcutModifiers) {
-                        ForEach(ShortcutModifiers.allCases) { option in
-                            Text("\(option.symbols)T").tag(option)
-                        }
-                    }
-                    Picker("截图 OCR", selection: $globalController.screenshotShortcutModifiers) {
-                        ForEach(ShortcutModifiers.allCases) { option in
-                            Text("\(option.symbols)S").tag(option)
-                        }
+                    shortcutPicker(
+                        title: "划词翻译",
+                        modifiers: $globalController.translateShortcutModifiers,
+                        key: $globalController.translateShortcutKey
+                    )
+                    shortcutPicker(
+                        title: "截图 OCR",
+                        modifiers: $globalController.screenshotShortcutModifiers,
+                        key: $globalController.screenshotShortcutKey
+                    )
+                    shortcutPicker(
+                        title: "快捷翻译输入框",
+                        modifiers: $globalController.quickInputShortcutModifiers,
+                        key: $globalController.quickInputShortcutKey
+                    )
+                    Text("菜单栏会显示截图 OCR 和快捷翻译输入框的当前快捷键；划词翻译快捷键仍可在此自定义。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if globalController.hasShortcutConflict {
+                        Label("三个功能不能使用相同的快捷键。", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
                     }
                 }
 
@@ -174,6 +200,7 @@ struct SettingsView: View {
                     globalController.saveSelectionPreferences()
                     dismiss()
                 }
+                .disabled(globalController.hasShortcutConflict)
                 .keyboardShortcut(.return)
                 .buttonStyle(.borderedProminent)
             }
@@ -190,6 +217,31 @@ struct SettingsView: View {
         viewModel.provider == .customAPI
             ? "支持 OpenAI Chat Completions 兼容接口；API Key 只保存在本机钥匙串中。"
             : "API Key 只保存在本机钥匙串中。"
+    }
+
+    private func shortcutPicker(
+        title: String,
+        modifiers: Binding<ShortcutModifiers>,
+        key: Binding<ShortcutKey>
+    ) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Picker("组合键", selection: modifiers) {
+                ForEach(ShortcutModifiers.allCases) { option in
+                    Text(option.symbols).tag(option)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 90)
+            Picker("按键", selection: key) {
+                ForEach(ShortcutKey.allCases) { option in
+                    Text(option.displayName).tag(option)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 70)
+        }
     }
 
 }
