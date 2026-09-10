@@ -126,6 +126,7 @@ final class TranslationViewModel: ObservableObject {
     @Published private(set) var comparisonResults: [ComparisonTranslationResult] = []
     @Published private(set) var providerConnectionStates: [String: ProviderConnectionState] = [:]
     @Published private(set) var isTestingConnections = false
+    @Published private(set) var updateState: AppUpdateState = .idle
 
     private let codexService: CodexCLIService
     private let directService: DirectProviderService
@@ -138,6 +139,8 @@ final class TranslationViewModel: ObservableObject {
     private var cacheOrder: [String] = []
     private var comparisonTasks: [Task<Void, Never>] = []
     private var connectionMonitorTask: Task<Void, Never>?
+    private let updateService = AppUpdateService()
+    private var hasCheckedForUpdates = false
 
     init(
         codexService: CodexCLIService = CodexCLIService(),
@@ -200,6 +203,26 @@ final class TranslationViewModel: ObservableObject {
 
     var canTranslate: Bool {
         !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isTranslating
+    }
+
+    var currentAppVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.1"
+    }
+
+    func checkForUpdates(force: Bool = false) async {
+        if case .checking = updateState { return }
+        guard force || !hasCheckedForUpdates else { return }
+
+        hasCheckedForUpdates = true
+        updateState = .checking
+        do {
+            let release = try await updateService.latestRelease()
+            updateState = updateService.isNewer(release.version, than: currentAppVersion)
+                ? .available(release)
+                : .upToDate
+        } catch {
+            updateState = .failed(error.localizedDescription)
+        }
     }
 
     var modelLabel: String {
@@ -307,11 +330,11 @@ final class TranslationViewModel: ObservableObject {
             customAPIDisplayName = config.displayName
             customAPIEndpoint = config.endpoint
             modelName = config.model
-            apiKey = keychain.readAPIKey(account: config.keychainAccount, allowInteraction: true) ?? ""
+            apiKey = keychain.readAPIKey(account: config.keychainAccount) ?? ""
         } else {
             modelName = UserDefaults.standard.string(forKey: modelKey(for: newProvider)) ?? newProvider.defaultModel
             apiKey = newProvider.needsAPIKey
-                ? (keychain.readAPIKey(for: newProvider, allowInteraction: true) ?? "")
+                ? (keychain.readAPIKey(for: newProvider) ?? "")
                 : ""
         }
         errorMessage = nil
@@ -335,13 +358,13 @@ final class TranslationViewModel: ObservableObject {
             customAPIDisplayName = config.displayName
             customAPIEndpoint = config.endpoint
             modelName = config.model
-            apiKey = keychain.readAPIKey(account: config.keychainAccount, allowInteraction: true) ?? ""
+            apiKey = keychain.readAPIKey(account: config.keychainAccount) ?? ""
             UserDefaults.standard.set(id.uuidString, forKey: "selectedCustomAPIID")
         } else {
             provider = source.provider
             modelName = UserDefaults.standard.string(forKey: modelKey(for: source.provider)) ?? source.provider.defaultModel
             apiKey = source.provider.needsAPIKey
-                ? (keychain.readAPIKey(for: source.provider, allowInteraction: true) ?? "")
+                ? (keychain.readAPIKey(for: source.provider) ?? "")
                 : ""
         }
 
@@ -361,7 +384,7 @@ final class TranslationViewModel: ObservableObject {
         customAPIDisplayName = config.displayName
         customAPIEndpoint = config.endpoint
         modelName = config.model
-        apiKey = keychain.readAPIKey(account: config.keychainAccount, allowInteraction: true) ?? ""
+        apiKey = keychain.readAPIKey(account: config.keychainAccount) ?? ""
         UserDefaults.standard.set(id.uuidString, forKey: "selectedCustomAPIID")
     }
 

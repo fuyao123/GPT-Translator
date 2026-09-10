@@ -4,6 +4,7 @@ import Security
 
 struct KeychainStore: Sendable {
     private let service = "com.gpttranslator.app"
+    private static let interactionLock = NSLock()
 
     func readAPIKey(for provider: ModelProvider, allowInteraction: Bool = false) -> String? {
         readCredential(account: provider.rawValue, allowInteraction: allowInteraction)
@@ -14,6 +15,14 @@ struct KeychainStore: Sendable {
     }
 
     private func readCredential(account: String, allowInteraction: Bool) -> String? {
+        Self.interactionLock.lock()
+        defer { Self.interactionLock.unlock() }
+
+        var previousInteraction = DarwinBoolean(true)
+        _ = SecKeychainGetUserInteractionAllowed(&previousInteraction)
+        _ = SecKeychainSetUserInteractionAllowed(allowInteraction)
+        defer { _ = SecKeychainSetUserInteractionAllowed(previousInteraction.boolValue) }
+
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -24,6 +33,10 @@ struct KeychainStore: Sendable {
         let authenticationContext = LAContext()
         authenticationContext.interactionNotAllowed = !allowInteraction
         query[kSecUseAuthenticationContext as String] = authenticationContext
+        if !allowInteraction {
+            // Keep background reads silent even for legacy Keychain ACL entries.
+            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        }
         var result: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
               let data = result as? Data else { return nil }

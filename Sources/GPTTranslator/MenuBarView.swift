@@ -94,11 +94,65 @@ struct MenuBarView: View {
 
             Button("打开主窗口", systemImage: "macwindow") { showMainWindow() }
             Button("设置", systemImage: "gearshape") { showSettings() }
-            Button("退出", systemImage: "power") { NSApp.terminate(nil) }
+
+            HStack {
+                Button("退出", systemImage: "power") { NSApp.terminate(nil) }
+                Spacer()
+                updateControl
+            }
         }
         .padding(14)
         .frame(width: 310)
-        .onAppear { viewModel.startConnectionMonitoring() }
+        .onAppear {
+            viewModel.startConnectionMonitoring()
+            Task { await viewModel.checkForUpdates() }
+        }
+    }
+
+    @ViewBuilder
+    private var updateControl: some View {
+        switch viewModel.updateState {
+        case .idle:
+            Button("检查更新") {
+                Task { await viewModel.checkForUpdates(force: true) }
+            }
+            .buttonStyle(.borderless)
+        case .checking:
+            HStack(spacing: 5) {
+                ProgressView().controlSize(.small)
+                Text("检查更新…")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        case .upToDate:
+            Button("已是最新版 · v\(viewModel.currentAppVersion)") {
+                Task { await viewModel.checkForUpdates(force: true) }
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .help("点击重新检查更新")
+        case .available(let release):
+            Button {
+                NSWorkspace.shared.open(release.pageURL)
+            } label: {
+                Label("发现 v\(release.version) 更新", systemImage: "arrow.down.circle.fill")
+            }
+            .buttonStyle(.borderless)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.blue)
+            .help("打开 GitHub Releases 下载新版本")
+        case .failed(let message):
+            Button {
+                Task { await viewModel.checkForUpdates(force: true) }
+            } label: {
+                Label("更新检查失败", systemImage: "exclamationmark.triangle")
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            .foregroundStyle(.orange)
+            .help("\(message)；点击重试")
+        }
     }
 
     private func showMainWindow() {

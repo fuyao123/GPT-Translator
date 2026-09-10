@@ -8,7 +8,7 @@ swift build -c release
 binary_path="$(swift build -c release --show-bin-path)/GPTTranslator"
 applications_dir="${APP_OUTPUT_DIR:-$HOME/Applications}"
 app_path="$applications_dir/GPT翻译助手.app"
-app_version="${APP_VERSION:-0.1.0}"
+app_version="${APP_VERSION:-0.2.1}"
 
 mkdir -p "$applications_dir"
 rm -rf "$app_path"
@@ -61,6 +61,5 @@ codesign \
     --deep \
     --sign "$signing_identity" \
     --identifier com.gpttranslator.app \
-    --requirements '=designated => identifier "com.gpttranslator.app"' \
     "$app_path" >/dev/null
 print "已安装：$app_path"

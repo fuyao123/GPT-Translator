@@ -20,7 +20,7 @@ final class AppleTranslationService {
             case .unsupportedPair:
                 return "Apple 翻译不支持这个语言组合。"
             case .languagePackNotInstalled:
-                return "Apple 翻译语言包尚未下载；首次实际翻译时，macOS 会提示下载。"
+                return "Apple 翻译语言包尚未下载，请先在系统“翻译”App 或系统设置中下载后再使用。"
             }
         }
     }
@@ -41,9 +41,18 @@ final class AppleTranslationService {
         guard let targetLanguage = target.localeLanguage else { throw ServiceError.unsupportedPair }
 
         let status = await LanguageAvailability().status(from: sourceLanguage, to: targetLanguage)
-        guard status != .unsupported else { throw ServiceError.unsupportedPair }
+        switch status {
+        case .installed:
+            break
+        case .supported:
+            throw ServiceError.languagePackNotInstalled
+        case .unsupported:
+            throw ServiceError.unsupportedPair
+        @unknown default:
+            throw ServiceError.unsupportedPair
+        }
 
-        if #available(macOS 26.0, *), status == .installed {
+        if #available(macOS 26.0, *) {
             let session = TranslationSession(installedSource: sourceLanguage, target: targetLanguage)
             let response = try await session.translate(text)
             return response.targetText.trimmingCharacters(in: .whitespacesAndNewlines)

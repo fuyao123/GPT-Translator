@@ -21,6 +21,7 @@
 - 每个自定义 API 可独立设置显示名称、接口地址、模型和 API Key
 - 划词和截图悬浮窗支持多来源并行对照、拖拽排序和顺序记忆
 - 菜单栏显示所有已开启来源的连接状态，启动时检测，之后每小时检测，也可手动刷新
+- 启动时自动检查 GitHub 正式版本，菜单栏右下角提示并可打开新版下载页
 - 每个第三方服务和自定义配置的 API Key 独立保存在 macOS 钥匙串
 - 可选择预设或自定义模型，并设置关闭、低、中、高、极高推理强度
 - 可在菜单栏决定是否翻译中文内容，并可选择是否在 Dock 中显示应用
@@ -47,7 +48,7 @@ open "$HOME/Applications/GPT翻译助手.app"
 
 ## DMG 安装
 
-从 GitHub Releases 下载 `GPT-Translator-0.2.0-macOS.dmg`，打开后把“GPT 翻译助手”拖入 Applications。当前公开构建未使用 Apple Developer ID 公证；macOS 首次打开时可能需要在 Finder 中右键应用并选择“打开”。
+从 GitHub Releases 下载 `GPT-Translator-0.2.1-macOS.dmg`，打开后把“GPT 翻译助手”拖入 Applications。当前公开构建未使用 Apple Developer ID 公证；macOS 首次打开时可能需要在 Finder 中右键应用并选择“打开”。
 
 ## 隐私与凭据
 

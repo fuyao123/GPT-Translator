@@ -124,6 +124,7 @@ final class GlobalTranslationController: NSObject, ObservableObject {
     private var mouseMonitor: Any?
     private var localMouseMonitor: Any?
     private var overlayWindow: NSPanel?
+    private var screenshotKeyMonitor: Any?
     private var floatingButtonWindow: NSPanel?
     private var resultWindow: NSPanel?
     private var quickInputWindow: NSPanel?
@@ -201,12 +202,14 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         if let hotKeyHandler { RemoveEventHandler(hotKeyHandler) }
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
         if let localMouseMonitor { NSEvent.removeMonitor(localMouseMonitor) }
+        if let screenshotKeyMonitor { NSEvent.removeMonitor(screenshotKeyMonitor) }
         translateHotKey = nil
         screenshotHotKey = nil
         quickInputHotKey = nil
         hotKeyHandler = nil
         mouseMonitor = nil
         localMouseMonitor = nil
+        screenshotKeyMonitor = nil
         hideFloatingButton()
         resultWindow?.close()
         resultWindow = nil
@@ -459,6 +462,9 @@ final class GlobalTranslationController: NSObject, ObservableObject {
             y: screen.maxY - panel.frame.height - 120
         ))
         NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows
+            .filter { $0 !== panel && !($0 is NSPanel) && $0.canBecomeMain }
+            .forEach { $0.orderOut(nil) }
         panel.makeKeyAndOrderFront(nil)
     }
 
@@ -534,8 +540,8 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         Task { @MainActor in
             defer { isCapturing = false }
             do {
-                guard let selectedImage = try await selectRegion(from: displayImage),
-                      let recognizedText = try recognizeText(in: selectedImage),
+                guard let selectedImage = try await selectRegion(from: displayImage) else { return }
+                guard let recognizedText = try recognizeText(in: selectedImage),
                       !recognizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     viewModel?.errorMessage = "选区中没有识别到文字。"
                     return
@@ -856,7 +862,10 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         guard let screen = NSScreen.main else { return nil }
         return await withCheckedContinuation { continuation in
             var panel: NSPanel?
+            var hasFinished = false
             let overlay = ScreenshotOverlayView(image: image, frame: NSRect(origin: .zero, size: screen.frame.size)) { [weak self] rect in
+                guard !hasFinished else { return }
+                hasFinished = true
                 let crop: CGImage?
                 if let rect {
                     let bounds = NSRect(origin: .zero, size: screen.frame.size)
@@ -873,6 +882,10 @@ final class GlobalTranslationController: NSObject, ObservableObject {
                     crop = nil
                 }
                 panel?.orderOut(nil)
+                if let monitor = self?.screenshotKeyMonitor {
+                    NSEvent.removeMonitor(monitor)
+                    self?.screenshotKeyMonitor = nil
+                }
                 self?.overlayWindow = nil
                 continuation.resume(returning: crop)
             }
@@ -889,10 +902,15 @@ final class GlobalTranslationController: NSObject, ObservableObject {
             newPanel.backgroundColor = .clear
             newPanel.hasShadow = false
             newPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            NSApp.activate(ignoringOtherApps: true)
             newPanel.makeKeyAndOrderFront(nil)
             newPanel.makeFirstResponder(overlay)
-            NSApp.activate(ignoringOtherApps: true)
             self.overlayWindow = newPanel
+            self.screenshotKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                guard event.keyCode == UInt16(kVK_Escape) else { return event }
+                overlay.cancelSelection()
+                return nil
+            }
         }
     }
 
@@ -1091,7 +1109,15 @@ private final class ScreenshotOverlayView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { onFinish(nil) } else { super.keyDown(with: event) }
+        if event.keyCode == UInt16(kVK_Escape) { cancelSelection() } else { super.keyDown(with: event) }
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        cancelSelection()
+    }
+
+    func cancelSelection() {
+        onFinish(nil)
     }
 
     private var selectionRect: CGRect? {

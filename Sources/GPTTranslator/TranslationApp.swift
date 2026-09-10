@@ -14,6 +14,7 @@ struct TranslationApp: App {
                 .onAppear {
                     globalController.connect(to: viewModel)
                     viewModel.startConnectionMonitoring()
+                    Task { await viewModel.checkForUpdates() }
                 }
         }
         .windowResizability(.contentSize)
