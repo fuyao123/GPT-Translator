@@ -171,8 +171,17 @@ final class GlobalTranslationController: NSObject, ObservableObject {
 
     override init() {
         let defaults = UserDefaults.standard
-        showSelectionButton = defaults.object(forKey: "showSelectionButton") as? Bool ?? true
-        autoTranslateSelection = defaults.bool(forKey: "autoTranslateSelection")
+        let storedShowSelectionButton = defaults.object(forKey: "showSelectionButton") as? Bool
+        let storedAutoTranslateSelection = defaults.object(forKey: "autoTranslateSelection") as? Bool
+        if storedShowSelectionButton == nil, storedAutoTranslateSelection == nil {
+            // New installations translate immediately. Users can opt in to
+            // showing the small translation button from Settings.
+            showSelectionButton = false
+            autoTranslateSelection = true
+        } else {
+            showSelectionButton = storedShowSelectionButton ?? !(storedAutoTranslateSelection ?? false)
+            autoTranslateSelection = storedAutoTranslateSelection ?? !(storedShowSelectionButton ?? true)
+        }
         selectionEnabled = defaults.object(forKey: "selectionEnabled") as? Bool ?? true
         translateShortcutModifiers = defaults.string(forKey: "translateShortcutModifiers")
             .flatMap(ShortcutModifiers.init(rawValue:)) ?? .commandShift

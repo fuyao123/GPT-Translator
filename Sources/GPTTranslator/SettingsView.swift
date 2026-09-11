@@ -9,8 +9,8 @@ struct SettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ScrollView {
-                Form {
-                Section("翻译服务") {
+                LazyVStack(alignment: .leading, spacing: 22) {
+                settingsSection("翻译服务") {
                     Picker("服务", selection: Binding(
                         get: { viewModel.provider },
                         set: { viewModel.selectProvider($0) }
@@ -96,7 +96,7 @@ struct SettingsView: View {
                 }
 
                 if viewModel.provider.supportsModelSelection {
-                    Section("模型与推理") {
+                    settingsSection("模型与推理") {
                     Picker("预设模型", selection: Binding(
                         get: {
                             viewModel.provider.modelOptions.contains(viewModel.modelName) ? viewModel.modelName : ""
@@ -122,7 +122,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("系统权限") {
+                settingsSection("系统权限") {
                     HStack {
                         Label(
                             globalController.accessibilityTrusted ? "辅助功能权限已允许" : "需要辅助功能权限",
@@ -140,7 +140,7 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Section("应用显示") {
+                settingsSection("应用显示") {
                     Toggle("在 Dock 中显示应用", isOn: $globalController.showInDock)
                     Toggle("登录时自动启动", isOn: $globalController.launchAtLogin)
                     Text("隐藏 Dock 图标后仍可通过菜单栏图标打开主窗口和设置；自动启动由 macOS 登录项管理。当前状态：\(globalController.launchAtLoginStatusDescription)。")
@@ -149,19 +149,19 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Section("划词翻译") {
-                    Toggle("启用划词监听", isOn: Binding(
+                settingsSection("划词翻译") {
+                    Toggle("启用划词翻译", isOn: Binding(
                         get: { globalController.selectionEnabled },
                         set: { globalController.setSelectionTranslationEnabled($0) }
                     ))
-                    Picker("选中后操作", selection: Binding(
-                        get: { globalController.selectionTriggerMode },
-                        set: { globalController.selectionTriggerMode = $0 }
-                    )) {
-                        ForEach(SelectionTriggerMode.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
-                        }
-                    }
+                    Toggle("选中后显示翻译图标", isOn: Binding(
+                        get: { globalController.selectionTriggerMode == .button },
+                        set: { globalController.selectionTriggerMode = $0 ? .button : .automatic }
+                    ))
+                    Text("未勾选时，选中文字后直接翻译；勾选后先显示翻译图标，点击图标再翻译。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     Toggle("自动判断中英文翻译方向", isOn: $viewModel.translateEnglishSelectionToChinese)
                     Text("检测到英文时译成中文，检测到中文时译成英文。是否处理中文可在菜单栏中快速切换。")
                         .font(.caption)
@@ -169,7 +169,7 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Section("快捷键") {
+                settingsSection("快捷键") {
                     shortcutPicker(
                         title: "启用/关闭划词翻译",
                         modifiers: $globalController.translateShortcutModifiers,
@@ -205,7 +205,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("悬浮窗结果来源") {
+                settingsSection("悬浮窗结果来源") {
                     ForEach(viewModel.allTranslationSources) { source in
                         Toggle(source.displayName, isOn: Binding(
                             get: { viewModel.isFloatingSourceEnabled(source) },
@@ -218,7 +218,8 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 }
-                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
             }
 
             if let errorMessage = viewModel.errorMessage {
@@ -314,6 +315,21 @@ struct SettingsView: View {
             }
             .labelsHidden()
             .frame(width: 70)
+        }
+    }
+
+    private func settingsSection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 10) {
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
