@@ -1746,6 +1746,7 @@ private struct SelectionTranslationView: View {
                         .fixedSize()
                         .help("复制识别或选中的原文")
                     }
+                    .padding(.horizontal, 12)
 
                     Divider()
 
