@@ -101,12 +101,12 @@ struct MenuBarView: View {
                     HStack(spacing: 6) {
                         ZStack {
                             Image(systemName: "viewfinder")
-                                .font(.system(size: 19, weight: .regular))
+                                .font(.system(size: 17, weight: .regular))
                             Text("译")
-                                .font(.system(size: 9, weight: .semibold))
+                                .font(.system(size: 7, weight: .semibold))
                         }
                         .foregroundStyle(.secondary)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 18, height: 18)
                         Text(globalController.isCapturing ? "截图处理中…" : "截图翻译")
                             .foregroundStyle(.primary)
                     }
