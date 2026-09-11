@@ -344,12 +344,23 @@ final class ScreenshotEditorModel: ObservableObject {
         return annotations.first(where: { $0.id == selectedAnnotationID })?.tool == .text
     }
 
+    var selectedAnnotationIsMosaic: Bool {
+        guard let selectedAnnotationID else { return false }
+        return annotations.first(where: { $0.id == selectedAnnotationID })?.tool == .mosaic
+    }
+
+    var lineWidthRange: ClosedRange<CGFloat> {
+        selectedTool == .mosaic || selectedAnnotationIsMosaic ? 16...100 : 2...30
+    }
+
     func selectAnnotation(_ id: UUID?) {
         selectedAnnotationID = id
         guard let id, let annotation = annotations.first(where: { $0.id == id }) else { return }
         selectedColor = annotation.color
         if annotation.tool == .text {
             textFontSize = annotation.fontSize
+        } else {
+            lineWidth = annotation.lineWidth
         }
     }
 
@@ -383,6 +394,23 @@ final class ScreenshotEditorModel: ObservableObject {
                 lineWidth: annotation.lineWidth,
                 text: annotation.text,
                 fontSize: textFontSize
+            )
+        }
+    }
+
+    func applySelectedLineWidth() {
+        guard selectedTool == .move, let selectedAnnotationID else { return }
+        annotations = annotations.map { annotation in
+            guard annotation.id == selectedAnnotationID, annotation.tool != .text else { return annotation }
+            return ScreenshotAnnotation(
+                id: annotation.id,
+                tool: annotation.tool,
+                points: annotation.points,
+                rect: annotation.rect,
+                color: annotation.color,
+                lineWidth: lineWidth,
+                text: annotation.text,
+                fontSize: annotation.fontSize
             )
         }
     }
@@ -1207,6 +1235,9 @@ struct CompactScreenshotEditorView: View {
         .onChange(of: model.textFontSize) { _ in
             model.applySelectedTextFontSize()
         }
+        .onChange(of: model.lineWidth) { _ in
+            model.applySelectedLineWidth()
+        }
     }
 
     private var screenshotCanvas: some View {
@@ -1355,6 +1386,16 @@ struct CompactScreenshotEditorView: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                         .frame(width: 24, alignment: .trailing)
+                } else if model.selectedTool == .move && model.selectedAnnotationID != nil {
+                    Image(systemName: model.selectedAnnotationIsMosaic ? "square.grid.3x3.fill" : "pencil.tip")
+                        .foregroundStyle(.secondary)
+                    Slider(value: $model.lineWidth, in: model.lineWidthRange, step: 1)
+                        .frame(width: 120)
+                        .help("边框粗细：\(Int(model.lineWidth))")
+                    Text("\(Int(model.lineWidth))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, alignment: .trailing)
                 } else if model.selectedTool == .move {
                     Label("拖动标注", systemImage: "hand.draw")
                         .font(.caption)
@@ -1365,7 +1406,7 @@ struct CompactScreenshotEditorView: View {
                         .foregroundStyle(.secondary)
                     Slider(
                         value: $model.lineWidth,
-                        in: model.selectedTool == .mosaic ? 16...100 : 2...30,
+                        in: model.lineWidthRange,
                         step: 1
                     )
                     .frame(width: 120)
@@ -1561,6 +1602,9 @@ struct ScreenshotEditorView: View {
         .onChange(of: model.textFontSize) { _ in
             model.applySelectedTextFontSize()
         }
+        .onChange(of: model.lineWidth) { _ in
+            model.applySelectedLineWidth()
+        }
     }
 
     private var toolbar: some View {
@@ -1623,17 +1667,29 @@ struct ScreenshotEditorView: View {
                 }
                 .frame(width: 150)
                 .help("文字字号")
+            } else if model.selectedTool == .move && model.selectedAnnotationID != nil {
+                HStack(spacing: 5) {
+                    Image(systemName: model.selectedAnnotationIsMosaic ? "square.grid.3x3.fill" : "pencil.tip")
+                    Slider(value: $model.lineWidth, in: model.lineWidthRange, step: 1)
+                    Text("\(Int(model.lineWidth))")
+                        .font(.caption.monospacedDigit())
+                        .frame(width: 24, alignment: .trailing)
+                }
+                .frame(width: 150)
+                .help("边框粗细")
             } else if model.selectedTool == .move {
                 Label("拖动标注", systemImage: "hand.draw")
                     .foregroundStyle(.secondary)
             } else {
-                Picker("笔触", selection: $model.lineWidth) {
-                    Text("细").tag(CGFloat(4))
-                    Text("中").tag(CGFloat(8))
-                    Text("粗").tag(CGFloat(14))
+                HStack(spacing: 5) {
+                    Image(systemName: model.selectedTool == .mosaic ? "square.grid.3x3.fill" : "pencil.tip")
+                    Slider(value: $model.lineWidth, in: model.lineWidthRange, step: 1)
+                    Text("\(Int(model.lineWidth))")
+                        .font(.caption.monospacedDigit())
+                        .frame(width: 24, alignment: .trailing)
                 }
-                .frame(width: 66)
-                .help("标注笔触粗细")
+                .frame(width: 150)
+                .help("标注笔触粗细：\(Int(model.lineWidth))")
             }
 
             Spacer(minLength: 8)
