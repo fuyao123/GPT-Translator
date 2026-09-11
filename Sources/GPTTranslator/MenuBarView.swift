@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
 
+private let menuActionColor = Color(nsColor: .labelColor)
+private let menuPreferenceColor = Color(nsColor: .secondaryLabelColor)
+private let menuShortcutColor = Color(nsColor: .tertiaryLabelColor)
+
 private struct MenuCaptureIcon: View {
     enum Kind {
         case capture
@@ -25,7 +29,7 @@ private struct MenuCaptureIcon: View {
             }
         }
         .font(.system(size: 16, weight: .regular))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(menuActionColor)
         .frame(width: 20, height: 20)
     }
 }
@@ -95,10 +99,10 @@ struct MenuBarView: View {
                 HStack(spacing: 6) {
                     Text("启用划词翻译")
                     Text(globalController.translateShortcutDescription)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(menuShortcutColor)
                 }
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(menuPreferenceColor)
 
             Toggle("翻译中文内容", isOn: Binding(
                 get: { viewModel.translateChineseContent },
@@ -106,7 +110,7 @@ struct MenuBarView: View {
                     viewModel.setTranslateChineseContent($0)
                 }
             ))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(menuPreferenceColor)
             .help("关闭后，划词和截图识别到中文时不调用翻译接口")
 
             Button {
@@ -115,14 +119,14 @@ struct MenuBarView: View {
                 HStack(spacing: 6) {
                     MenuCaptureIcon(kind: .capture)
                     Text("普通截图")
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(menuActionColor)
                     Text(globalController.captureShortcutDescription)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(menuShortcutColor)
                 }
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .disabled(globalController.isCapturing)
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
 
             Button {
                 globalController.translateScreenshot()
@@ -130,14 +134,14 @@ struct MenuBarView: View {
                 HStack(spacing: 6) {
                     MenuCaptureIcon(kind: .translation)
                     Text(globalController.isCapturing ? "截图处理中…" : "截图翻译")
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(menuActionColor)
                     Text(globalController.screenshotShortcutDescription)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(menuShortcutColor)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .disabled(globalController.isCapturing)
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
 
             Button {
                 globalController.recognizeScreenshot()
@@ -145,14 +149,14 @@ struct MenuBarView: View {
                 HStack(spacing: 6) {
                     MenuCaptureIcon(kind: .ocr)
                     Text("截图 OCR")
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(menuActionColor)
                     Text(globalController.ocrShortcutDescription)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(menuShortcutColor)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .disabled(globalController.isCapturing)
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
 
             Button {
                 globalController.toggleQuickTranslationInput()
@@ -160,27 +164,27 @@ struct MenuBarView: View {
                 HStack(spacing: 6) {
                     MenuCaptureIcon(kind: .quickInput)
                     Text("快捷翻译输入框")
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(menuActionColor)
                     Text(globalController.quickInputShortcutDescription)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(menuShortcutColor)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
 
             Divider()
 
             Button("打开主窗口", systemImage: "macwindow") { showMainWindow() }
                 .buttonStyle(.borderless)
-                .foregroundStyle(.primary)
+                .foregroundStyle(menuActionColor)
             Button("设置", systemImage: "gearshape") { showSettings() }
                 .buttonStyle(.borderless)
-                .foregroundStyle(.primary)
+                .foregroundStyle(menuActionColor)
 
             HStack {
                 Button("退出", systemImage: "power") { NSApp.terminate(nil) }
                     .buttonStyle(.borderless)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(menuActionColor)
                 Spacer()
                 updateControl
             }
