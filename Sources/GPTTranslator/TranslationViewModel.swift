@@ -215,7 +215,7 @@ final class TranslationViewModel: ObservableObject {
     }
 
     var currentAppVersion: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.1"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.2"
     }
 
     func checkForUpdates(force: Bool = false) async {

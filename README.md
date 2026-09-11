@@ -11,7 +11,7 @@
 - 菜单栏翻译图标
 - 自动识别原文语言，支持中文、英语、日语、韩语、西班牙语、法语和德语
 - 在任意应用选中文字后按 `⌘⇧T` 翻译
-- 在支持划词的应用中选择文字后显示翻译按钮，点击后在原位置附近显示翻译结果
+- 划词翻译默认在选中文字后直接翻译；也可切换为显示翻译图标，将鼠标移到图标上即可翻译
 - 按 `⌘⇧S` 截图，拖动选择区域后用 macOS Vision OCR，再翻译识别结果
 - 按 `⌘⇧A` 普通截图，使用微信式紧凑工具栏进行画笔、形状、箭头、文字、自由涂抹马赛克、置顶、复制和保存
 - 按 `⌘⇧O` 截图 OCR，只识别选区文字并复制到剪贴板，不进行翻译
@@ -58,7 +58,7 @@ open "$HOME/Applications/GPT翻译助手.app"
 
 ## DMG 安装
 
-从 GitHub Releases 下载 `GPT-Translator-1.1.1-macOS.dmg`，打开后把“GPT 翻译助手”拖入 Applications。当前公开构建未使用 Apple Developer ID 公证；macOS 首次打开时可能需要在 Finder 中右键应用并选择“打开”。
+从 GitHub Releases 下载 `GPT-Translator-1.1.2-macOS.dmg`，打开后把“GPT 翻译助手”拖入 Applications。当前公开构建未使用 Apple Developer ID 公证；macOS 首次打开时可能需要在 Finder 中右键应用并选择“打开”。
 
 ## 隐私与凭据
 
