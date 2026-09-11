@@ -101,9 +101,9 @@ struct MenuBarView: View {
                     HStack(spacing: 6) {
                         ZStack {
                             Image(systemName: "viewfinder")
-                                .font(.system(size: 17, weight: .regular))
+                                .font(.system(size: 15, weight: .regular))
                             Text("译")
-                                .font(.system(size: 7, weight: .semibold))
+                                .font(.system(size: 6, weight: .semibold))
                         }
                         .foregroundStyle(.secondary)
                         .frame(width: 18, height: 18)
