@@ -112,6 +112,8 @@ final class GlobalTranslationController: NSObject, ObservableObject {
     @Published var screenshotShortcutKey: ShortcutKey
     @Published var captureShortcutModifiers: ShortcutModifiers
     @Published var captureShortcutKey: ShortcutKey
+    @Published var ocrShortcutModifiers: ShortcutModifiers
+    @Published var ocrShortcutKey: ShortcutKey
     @Published var quickInputShortcutModifiers: ShortcutModifiers
     @Published var quickInputShortcutKey: ShortcutKey
     @Published var showInDock: Bool
@@ -129,6 +131,7 @@ final class GlobalTranslationController: NSObject, ObservableObject {
     private var translateHotKey: EventHotKeyRef?
     private var screenshotHotKey: EventHotKeyRef?
     private var captureHotKey: EventHotKeyRef?
+    private var ocrHotKey: EventHotKeyRef?
     private var quickInputHotKey: EventHotKeyRef?
     private var mouseMonitor: Any?
     private var localMouseMonitor: Any?
@@ -164,6 +167,7 @@ final class GlobalTranslationController: NSObject, ObservableObject {
     private static let screenshotHotKeyID: UInt32 = 2
     private static let quickInputHotKeyID: UInt32 = 3
     private static let captureHotKeyID: UInt32 = 4
+    private static let ocrHotKeyID: UInt32 = 5
 
     override init() {
         let defaults = UserDefaults.standard
@@ -182,6 +186,10 @@ final class GlobalTranslationController: NSObject, ObservableObject {
             .flatMap(ShortcutModifiers.init(rawValue:)) ?? .commandShift
         captureShortcutKey = defaults.string(forKey: "captureShortcutKey")
             .flatMap(ShortcutKey.init(rawValue:)) ?? .a
+        ocrShortcutModifiers = defaults.string(forKey: "ocrShortcutModifiers")
+            .flatMap(ShortcutModifiers.init(rawValue:)) ?? .commandShift
+        ocrShortcutKey = defaults.string(forKey: "ocrShortcutKey")
+            .flatMap(ShortcutKey.init(rawValue:)) ?? .o
         quickInputShortcutModifiers = defaults.string(forKey: "quickInputShortcutModifiers")
             .flatMap(ShortcutModifiers.init(rawValue:)) ?? .commandShift
         quickInputShortcutKey = defaults.string(forKey: "quickInputShortcutKey")
@@ -222,6 +230,7 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         if let translateHotKey { UnregisterEventHotKey(translateHotKey) }
         if let screenshotHotKey { UnregisterEventHotKey(screenshotHotKey) }
         if let captureHotKey { UnregisterEventHotKey(captureHotKey) }
+        if let ocrHotKey { UnregisterEventHotKey(ocrHotKey) }
         if let quickInputHotKey { UnregisterEventHotKey(quickInputHotKey) }
         if let hotKeyHandler { RemoveEventHandler(hotKeyHandler) }
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
@@ -231,6 +240,7 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         translateHotKey = nil
         screenshotHotKey = nil
         captureHotKey = nil
+        ocrHotKey = nil
         quickInputHotKey = nil
         hotKeyHandler = nil
         mouseMonitor = nil
@@ -405,6 +415,8 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         UserDefaults.standard.set(screenshotShortcutKey.rawValue, forKey: "screenshotShortcutKey")
         UserDefaults.standard.set(captureShortcutModifiers.rawValue, forKey: "captureShortcutModifiers")
         UserDefaults.standard.set(captureShortcutKey.rawValue, forKey: "captureShortcutKey")
+        UserDefaults.standard.set(ocrShortcutModifiers.rawValue, forKey: "ocrShortcutModifiers")
+        UserDefaults.standard.set(ocrShortcutKey.rawValue, forKey: "ocrShortcutKey")
         UserDefaults.standard.set(quickInputShortcutModifiers.rawValue, forKey: "quickInputShortcutModifiers")
         UserDefaults.standard.set(quickInputShortcutKey.rawValue, forKey: "quickInputShortcutKey")
         UserDefaults.standard.set(showInDock, forKey: "showInDock")
@@ -439,6 +451,10 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         captureShortcutModifiers.symbols + captureShortcutKey.displayName
     }
 
+    var ocrShortcutDescription: String {
+        ocrShortcutModifiers.symbols + ocrShortcutKey.displayName
+    }
+
     var quickInputShortcutDescription: String {
         quickInputShortcutModifiers.symbols + quickInputShortcutKey.displayName
     }
@@ -448,6 +464,7 @@ final class GlobalTranslationController: NSObject, ObservableObject {
             translateShortcutDescription,
             screenshotShortcutDescription,
             captureShortcutDescription,
+            ocrShortcutDescription,
             quickInputShortcutDescription
         ]).count < 4
     }
@@ -796,6 +813,34 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         }
     }
 
+    func recognizeScreenshot() {
+        guard !isCapturing else { return }
+        isCapturing = true
+        removeScreenshotEscapeMonitors()
+        Task { @MainActor in
+            defer {
+                isCapturing = false
+                if screenshotEditorWindow != nil { installScreenshotEditorEscapeMonitors() }
+            }
+            await Task.yield()
+            guard let displayImage = currentDisplayImage() else { return }
+            do {
+                guard let selection = try await selectRegion(from: displayImage) else { return }
+                guard let recognizedText = try recognizeText(in: selection.image),
+                      !recognizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    viewModel?.errorMessage = "选区中没有识别到文字。"
+                    return
+                }
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.setString(recognizedText, forType: .string)
+                showScreenshotOCRStatus("OCR 文字已复制")
+            } catch {
+                viewModel?.errorMessage = "OCR 识别失败：\(error.localizedDescription)"
+            }
+        }
+    }
+
     private func currentDisplayImage() -> CGImage? {
         guard CGPreflightScreenCaptureAccess() else {
             if !hasRequestedScreenCapturePermission {
@@ -1096,14 +1141,17 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         if let translateHotKey { UnregisterEventHotKey(translateHotKey) }
         if let screenshotHotKey { UnregisterEventHotKey(screenshotHotKey) }
         if let captureHotKey { UnregisterEventHotKey(captureHotKey) }
+        if let ocrHotKey { UnregisterEventHotKey(ocrHotKey) }
         if let quickInputHotKey { UnregisterEventHotKey(quickInputHotKey) }
         translateHotKey = nil
         screenshotHotKey = nil
         captureHotKey = nil
+        ocrHotKey = nil
         quickInputHotKey = nil
         let translateID = EventHotKeyID(signature: Self.hotKeySignature, id: Self.translateHotKeyID)
         let screenshotID = EventHotKeyID(signature: Self.hotKeySignature, id: Self.screenshotHotKeyID)
         let captureID = EventHotKeyID(signature: Self.hotKeySignature, id: Self.captureHotKeyID)
+        let ocrID = EventHotKeyID(signature: Self.hotKeySignature, id: Self.ocrHotKeyID)
         let quickInputID = EventHotKeyID(signature: Self.hotKeySignature, id: Self.quickInputHotKeyID)
         RegisterEventHotKey(
             translateShortcutKey.carbonKeyCode, translateShortcutModifiers.carbonFlags, translateID,
@@ -1116,6 +1164,10 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         RegisterEventHotKey(
             captureShortcutKey.carbonKeyCode, captureShortcutModifiers.carbonFlags, captureID,
             GetApplicationEventTarget(), 0, &captureHotKey
+        )
+        RegisterEventHotKey(
+            ocrShortcutKey.carbonKeyCode, ocrShortcutModifiers.carbonFlags, ocrID,
+            GetApplicationEventTarget(), 0, &ocrHotKey
         )
         RegisterEventHotKey(
             quickInputShortcutKey.carbonKeyCode, quickInputShortcutModifiers.carbonFlags, quickInputID,
@@ -1132,6 +1184,8 @@ final class GlobalTranslationController: NSObject, ObservableObject {
             translateScreenshot()
         } else if id == Self.captureHotKeyID {
             captureScreenshot()
+        } else if id == Self.ocrHotKeyID {
+            recognizeScreenshot()
         } else if id == Self.quickInputHotKeyID {
             toggleQuickTranslationInput()
         }
@@ -1502,6 +1556,57 @@ final class GlobalTranslationController: NSObject, ObservableObject {
     private func recognizeText(in image: CGImage) throws -> String? {
         try ScreenshotOCRService.recognizeText(in: image)
     }
+
+    private func showScreenshotOCRStatus(_ message: String) {
+        selectionStatusDismissWorkItem?.cancel()
+
+        let size = NSSize(width: 220, height: 54)
+        let panel: NSPanel
+        if let selectionStatusWindow {
+            panel = selectionStatusWindow
+        } else {
+            panel = NSPanel(
+                contentRect: NSRect(origin: .zero, size: size),
+                styleMask: [.borderless, .nonactivatingPanel],
+                backing: .buffered,
+                defer: false
+            )
+            panel.isReleasedWhenClosed = false
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.hasShadow = true
+            panel.level = .floating
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            panel.ignoresMouseEvents = true
+            selectionStatusWindow = panel
+        }
+
+        panel.contentView = NSHostingView(rootView: ScreenshotOCRStatusHUD(message: message))
+        let pointer = NSEvent.mouseLocation
+        let visible = (NSScreen.screens.first { $0.frame.contains(pointer) } ?? NSScreen.main)?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        panel.setFrameOrigin(NSPoint(
+            x: visible.midX - size.width / 2,
+            y: visible.midY + min(150, visible.height * 0.18)
+        ))
+        panel.alphaValue = 1
+        panel.orderFrontRegardless()
+
+        let workItem = DispatchWorkItem { [weak self, weak panel] in
+            guard let self, let panel else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                panel.animator().alphaValue = 0
+            } completionHandler: { [weak self, weak panel] in
+                Task { @MainActor in
+                    panel?.orderOut(nil)
+                    self?.selectionStatusDismissWorkItem = nil
+                }
+            }
+        }
+        selectionStatusDismissWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3, execute: workItem)
+    }
 }
 
 private struct SelectionStatusHUD: View {
@@ -1518,6 +1623,28 @@ private struct SelectionStatusHUD: View {
         }
         .padding(.horizontal, 18)
         .frame(width: 210, height: 54)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+        }
+    }
+}
+
+private struct ScreenshotOCRStatusHUD: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "doc.text.viewfinder")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.green)
+            Text(message)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 18)
+        .frame(width: 220, height: 54)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 13, style: .continuous)

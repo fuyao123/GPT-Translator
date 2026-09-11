@@ -186,15 +186,20 @@ struct SettingsView: View {
                         key: $globalController.captureShortcutKey
                     )
                     shortcutPicker(
+                        title: "截图 OCR",
+                        modifiers: $globalController.ocrShortcutModifiers,
+                        key: $globalController.ocrShortcutKey
+                    )
+                    shortcutPicker(
                         title: "快捷翻译输入框",
                         modifiers: $globalController.quickInputShortcutModifiers,
                         key: $globalController.quickInputShortcutKey
                     )
-                    Text("菜单栏会显示各功能的当前快捷键；“启用/关闭划词翻译”快捷键用于切换划词监听状态。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if globalController.hasShortcutConflict {
-                        Label("四个功能不能使用相同的快捷键。", systemImage: "exclamationmark.triangle.fill")
+                        Text("菜单栏会显示各功能的当前快捷键；“启用/关闭划词翻译”快捷键用于切换划词监听状态，截图 OCR 只识别并复制文字，不进行翻译。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if globalController.hasShortcutConflict {
+                        Label("五个功能不能使用相同的快捷键。", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
                             .foregroundStyle(.red)
                     }
@@ -278,6 +283,8 @@ struct SettingsView: View {
             screenshotShortcutKey: globalController.screenshotShortcutKey,
             captureShortcutModifiers: globalController.captureShortcutModifiers,
             captureShortcutKey: globalController.captureShortcutKey,
+            ocrShortcutModifiers: globalController.ocrShortcutModifiers,
+            ocrShortcutKey: globalController.ocrShortcutKey,
             quickInputShortcutModifiers: globalController.quickInputShortcutModifiers,
             quickInputShortcutKey: globalController.quickInputShortcutKey,
             showInDock: globalController.showInDock,
@@ -331,6 +338,8 @@ private struct AutomaticSaveSnapshot: Equatable {
     let screenshotShortcutKey: ShortcutKey
     let captureShortcutModifiers: ShortcutModifiers
     let captureShortcutKey: ShortcutKey
+    let ocrShortcutModifiers: ShortcutModifiers
+    let ocrShortcutKey: ShortcutKey
     let quickInputShortcutModifiers: ShortcutModifiers
     let quickInputShortcutKey: ShortcutKey
     let showInDock: Bool

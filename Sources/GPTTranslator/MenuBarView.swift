@@ -109,6 +109,20 @@ struct MenuBarView: View {
             .buttonStyle(.borderless)
 
             Button {
+                globalController.recognizeScreenshot()
+            } label: {
+                HStack(spacing: 6) {
+                    Label("截图 OCR", systemImage: "doc.text.viewfinder")
+                        .foregroundStyle(.primary)
+                    Text(globalController.ocrShortcutDescription)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .disabled(globalController.isCapturing)
+            .buttonStyle(.borderless)
+
+            Button {
                 globalController.toggleQuickTranslationInput()
             } label: {
                 HStack(spacing: 6) {
