@@ -1730,12 +1730,22 @@ private struct SelectionTranslationView: View {
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
-                    Text(viewModel.sourceText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
+                    HStack(alignment: .top, spacing: 10) {
+                        Text(viewModel.sourceText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+
+                        Button("复制", systemImage: "doc.on.doc") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(viewModel.sourceText, forType: .string)
+                        }
+                        .buttonStyle(.borderless)
+                        .fixedSize()
+                        .help("复制识别或选中的原文")
+                    }
 
                     Divider()
 
