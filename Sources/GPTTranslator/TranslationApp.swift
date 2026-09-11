@@ -34,27 +34,38 @@ struct TranslationApp: App {
                 .environmentObject(viewModel)
                 .environmentObject(globalController)
         } label: {
-            MenuBarTranslationIcon()
+            MenuBarTranslationIcon(selectionEnabled: globalController.selectionEnabled)
         }
         .menuBarExtraStyle(.window)
     }
 }
 
 private struct MenuBarTranslationIcon: View {
+    let selectionEnabled: Bool
+
     var body: some View {
-        Group {
-            if let iconURL = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png"),
-               let icon = NSImage(contentsOf: iconURL) {
-                Image(nsImage: templateImage(icon))
-                    .interpolation(.high)
-            } else {
-                Image(systemName: "character.bubble.fill")
-                    .resizable()
-                    .scaledToFit()
+        HStack(spacing: 2) {
+            Group {
+                if let iconURL = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png"),
+                   let icon = NSImage(contentsOf: iconURL) {
+                    Image(nsImage: templateImage(icon))
+                        .interpolation(.high)
+                } else {
+                    Image(systemName: "character.bubble.fill")
+                        .resizable()
+                        .scaledToFit()
+                }
+            }
+            .frame(width: 20, height: 17)
+
+            if !selectionEnabled {
+                Text("关")
+                    .font(.system(size: 9, weight: .bold))
+                    .fixedSize()
             }
         }
-        .frame(width: 20, height: 17)
-        .accessibilityLabel("AI 翻译助手")
+        .id(selectionEnabled)
+        .accessibilityLabel(selectionEnabled ? "AI 翻译助手，划词翻译已开启" : "AI 翻译助手，划词翻译已关闭")
     }
 
     private func templateImage(_ image: NSImage) -> NSImage {

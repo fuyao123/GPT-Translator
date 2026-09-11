@@ -150,7 +150,10 @@ struct SettingsView: View {
                 }
 
                 Section("划词翻译") {
-                    Toggle("启用划词监听", isOn: $globalController.selectionEnabled)
+                    Toggle("启用划词监听", isOn: Binding(
+                        get: { globalController.selectionEnabled },
+                        set: { globalController.setSelectionTranslationEnabled($0) }
+                    ))
                     Picker("选中后操作", selection: Binding(
                         get: { globalController.selectionTriggerMode },
                         set: { globalController.selectionTriggerMode = $0 }
@@ -168,7 +171,7 @@ struct SettingsView: View {
 
                 Section("快捷键") {
                     shortcutPicker(
-                        title: "划词翻译",
+                        title: "启用/关闭划词翻译",
                         modifiers: $globalController.translateShortcutModifiers,
                         key: $globalController.translateShortcutKey
                     )
@@ -187,7 +190,7 @@ struct SettingsView: View {
                         modifiers: $globalController.quickInputShortcutModifiers,
                         key: $globalController.quickInputShortcutKey
                     )
-                    Text("菜单栏会显示普通截图、截图翻译和快捷翻译输入框的当前快捷键；划词翻译快捷键仍可在此自定义。")
+                    Text("菜单栏会显示各功能的当前快捷键；“启用/关闭划词翻译”快捷键用于切换划词监听状态。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if globalController.hasShortcutConflict {

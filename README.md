@@ -57,7 +57,7 @@ open "$HOME/Applications/GPT翻译助手.app"
 
 ## DMG 安装
 
-从 GitHub Releases 下载 `GPT-Translator-1.1.0-macOS.dmg`，打开后把“GPT 翻译助手”拖入 Applications。当前公开构建未使用 Apple Developer ID 公证；macOS 首次打开时可能需要在 Finder 中右键应用并选择“打开”。
+从 GitHub Releases 下载 `GPT-Translator-1.1.1-macOS.dmg`，打开后把“GPT 翻译助手”拖入 Applications。当前公开构建未使用 Apple Developer ID 公证；macOS 首次打开时可能需要在 Finder 中右键应用并选择“打开”。
 
 ## 隐私与凭据
 

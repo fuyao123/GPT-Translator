@@ -141,6 +141,8 @@ final class GlobalTranslationController: NSObject, ObservableObject {
     private var screenshotEditorWindows: [ScreenshotEditorPanel] = []
     private var screenshotTranslationWindow: NSPanel?
     private var settingsWindow: NSWindow?
+    private var selectionStatusWindow: NSPanel?
+    private var selectionStatusDismissWorkItem: DispatchWorkItem?
     private var pinnedScreenshotWindows: [PinnedScreenshotPanel] = []
     private var quickInputWindow: QuickTranslationPanel?
     private var resultWindowAnchor: NSPoint?
@@ -245,6 +247,10 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         screenshotTranslationWindow = nil
         settingsWindow?.close()
         settingsWindow = nil
+        selectionStatusDismissWorkItem?.cancel()
+        selectionStatusDismissWorkItem = nil
+        selectionStatusWindow?.orderOut(nil)
+        selectionStatusWindow = nil
         pinnedScreenshotWindows.forEach { $0.orderOut(nil) }
         pinnedScreenshotWindows.removeAll()
         quickInputTranslationTask?.cancel()
@@ -319,6 +325,73 @@ final class GlobalTranslationController: NSObject, ObservableObject {
             logger.info("translateSelection selectedTextLength=\(text.count, privacy: .public)")
             viewModel?.translateForFloatingWindow(text)
         }
+    }
+
+    func toggleSelectionTranslation() {
+        setSelectionTranslationEnabled(!selectionEnabled)
+    }
+
+    func setSelectionTranslationEnabled(_ enabled: Bool) {
+        guard selectionEnabled != enabled else { return }
+        selectionEnabled = enabled
+        UserDefaults.standard.set(selectionEnabled, forKey: "selectionEnabled")
+        if !selectionEnabled {
+            hideFloatingButton()
+            if !isResultWindowPinned { resultWindow?.orderOut(nil) }
+        }
+        showSelectionStatusHUD(enabled: selectionEnabled)
+        logger.info("Selection translation enabled=\(self.selectionEnabled, privacy: .public)")
+    }
+
+    private func showSelectionStatusHUD(enabled: Bool) {
+        selectionStatusDismissWorkItem?.cancel()
+
+        let size = NSSize(width: 210, height: 54)
+        let panel: NSPanel
+        if let selectionStatusWindow {
+            panel = selectionStatusWindow
+        } else {
+            panel = NSPanel(
+                contentRect: NSRect(origin: .zero, size: size),
+                styleMask: [.borderless, .nonactivatingPanel],
+                backing: .buffered,
+                defer: false
+            )
+            panel.isReleasedWhenClosed = false
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.hasShadow = true
+            panel.level = .floating
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            panel.ignoresMouseEvents = true
+            selectionStatusWindow = panel
+        }
+
+        panel.contentView = NSHostingView(rootView: SelectionStatusHUD(enabled: enabled))
+        let pointer = NSEvent.mouseLocation
+        let visible = (NSScreen.screens.first { $0.frame.contains(pointer) } ?? NSScreen.main)?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        panel.setFrameOrigin(NSPoint(
+            x: visible.midX - size.width / 2,
+            y: visible.midY + min(150, visible.height * 0.18)
+        ))
+        panel.alphaValue = 1
+        panel.orderFrontRegardless()
+
+        let workItem = DispatchWorkItem { [weak self, weak panel] in
+            guard let self, let panel else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                panel.animator().alphaValue = 0
+            } completionHandler: { [weak self, weak panel] in
+                Task { @MainActor in
+                    panel?.orderOut(nil)
+                    self?.selectionStatusDismissWorkItem = nil
+                }
+            }
+        }
+        selectionStatusDismissWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3, execute: workItem)
     }
 
     @discardableResult
@@ -1054,7 +1127,7 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         guard Date().timeIntervalSince(lastShortcutTime) > 0.3 else { return }
         lastShortcutTime = Date()
         if id == Self.translateHotKeyID {
-            translateSelection()
+            toggleSelectionTranslation()
         } else if id == Self.screenshotHotKeyID {
             translateScreenshot()
         } else if id == Self.captureHotKeyID {
@@ -1066,11 +1139,18 @@ final class GlobalTranslationController: NSObject, ObservableObject {
 
     private func handleSelectionMouseUp() {
         guard selectionEnabled, !NSApp.isActive, (showSelectionButton || autoTranslateSelection) else { return }
+        guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier != "com.apple.finder" else {
+            hideFloatingButton()
+            return
+        }
         accessibilityTrusted = AXIsProcessTrusted()
         guard accessibilityTrusted else { return }
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 180_000_000)
-            guard let self, let text = await self.selectedTextWithClipboardFallback(),
+            guard let self,
+                  self.selectionEnabled,
+                  NSWorkspace.shared.frontmostApplication?.bundleIdentifier != "com.apple.finder",
+                  let text = await self.selectedTextWithClipboardFallback(),
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             guard self.viewModel?.shouldTranslateFloatingText(text) != false else {
                 self.hideFloatingButton()
@@ -1404,6 +1484,28 @@ final class GlobalTranslationController: NSObject, ObservableObject {
 
     private func recognizeText(in image: CGImage) throws -> String? {
         try ScreenshotOCRService.recognizeText(in: image)
+    }
+}
+
+private struct SelectionStatusHUD: View {
+    let enabled: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: enabled ? "text.bubble.fill" : "text.bubble")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(enabled ? Color.green : Color.secondary)
+            Text(enabled ? "划词翻译已开启" : "划词翻译已关闭")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 18)
+        .frame(width: 210, height: 54)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+        }
     }
 }
 

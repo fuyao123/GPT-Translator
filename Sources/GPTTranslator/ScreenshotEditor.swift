@@ -1109,12 +1109,20 @@ struct CompactScreenshotEditorView: View {
 
     private func saveScreenshot() {
         guard let data = renderedPNGData() else { return }
+        model.ocrStatus = "请选择保存位置…"
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = "截图-\(Self.fileDateFormatter.string(from: Date())).png"
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        NSApp.activate(ignoringOtherApps: true)
+        panel.orderFrontRegardless()
         panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
+            guard response == .OK, let url = panel.url else {
+                model.ocrStatus = "已取消保存"
+                return
+            }
             do {
                 try data.write(to: url, options: .atomic)
                 model.ocrStatus = "已保存：\(url.lastPathComponent)"
@@ -1366,12 +1374,20 @@ struct ScreenshotEditorView: View {
 
     private func saveScreenshot() {
         guard let data = renderedPNGData() else { return }
+        model.ocrStatus = "请选择保存位置…"
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = "截图-\(Self.fileDateFormatter.string(from: Date())).png"
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        NSApp.activate(ignoringOtherApps: true)
+        panel.orderFrontRegardless()
         panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
+            guard response == .OK, let url = panel.url else {
+                model.ocrStatus = "已取消保存"
+                return
+            }
             do {
                 try data.write(to: url, options: .atomic)
                 model.ocrStatus = "已保存：\(url.lastPathComponent)"

@@ -60,8 +60,7 @@ struct MenuBarView: View {
             Toggle(isOn: Binding(
                 get: { globalController.selectionEnabled },
                 set: {
-                    globalController.selectionEnabled = $0
-                    globalController.saveSelectionPreferences()
+                    globalController.setSelectionTranslationEnabled($0)
                 }
             )) {
                 HStack(spacing: 6) {
