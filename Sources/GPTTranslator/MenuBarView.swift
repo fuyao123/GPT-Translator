@@ -17,9 +17,9 @@ private struct MenuCaptureIcon: View {
             case .capture:
                 Image(systemName: "camera.viewfinder")
             case .translation:
-                Image(systemName: "character.bubble")
-            case .ocr:
                 Image(systemName: "doc.text.viewfinder")
+            case .ocr:
+                Image(systemName: "character.bubble")
             case .quickInput:
                 Image(systemName: "text.magnifyingglass")
             }
