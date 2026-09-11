@@ -99,11 +99,14 @@ struct MenuBarView: View {
             } label: {
                 HStack(spacing: 6) {
                     HStack(spacing: 6) {
-                        Text("译")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 20, height: 20)
-                            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        ZStack {
+                            Image(systemName: "viewfinder")
+                                .font(.system(size: 19, weight: .regular))
+                            Text("译")
+                                .font(.system(size: 9, weight: .semibold))
+                        }
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20, height: 20)
                         Text(globalController.isCapturing ? "截图处理中…" : "截图翻译")
                             .foregroundStyle(.primary)
                     }
