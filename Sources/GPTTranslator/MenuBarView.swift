@@ -1,6 +1,38 @@
 import AppKit
 import SwiftUI
 
+private struct MenuCaptureIcon: View {
+    enum Kind {
+        case capture
+        case translation
+        case ocr
+        case quickInput
+    }
+
+    let kind: Kind
+
+    var body: some View {
+        ZStack {
+            switch kind {
+            case .capture:
+                Image(systemName: "camera.viewfinder")
+            case .translation:
+                Image(systemName: "viewfinder")
+                Text("译")
+                    .font(.system(size: 6, weight: .semibold))
+                    .offset(y: 0.25)
+            case .ocr:
+                Image(systemName: "doc.text.viewfinder")
+            case .quickInput:
+                Image(systemName: "text.magnifyingglass")
+            }
+        }
+        .font(.system(size: 16, weight: .regular))
+        .foregroundStyle(.secondary)
+        .frame(width: 20, height: 20)
+    }
+}
+
 struct MenuBarView: View {
     @EnvironmentObject private var viewModel: TranslationViewModel
     @EnvironmentObject private var globalController: GlobalTranslationController
@@ -84,7 +116,8 @@ struct MenuBarView: View {
                 globalController.captureScreenshot()
             } label: {
                 HStack(spacing: 6) {
-                    Label("普通截图", systemImage: "camera.viewfinder")
+                    MenuCaptureIcon(kind: .capture)
+                    Text("普通截图")
                         .foregroundStyle(.primary)
                     Text(globalController.captureShortcutDescription)
                         .foregroundStyle(.secondary)
@@ -98,18 +131,9 @@ struct MenuBarView: View {
                 globalController.translateScreenshot()
             } label: {
                 HStack(spacing: 6) {
-                    HStack(spacing: 6) {
-                        ZStack {
-                            Image(systemName: "viewfinder")
-                                .font(.system(size: 15, weight: .regular))
-                            Text("译")
-                                .font(.system(size: 6, weight: .semibold))
-                        }
-                        .foregroundStyle(.secondary)
-                        .frame(width: 18, height: 18)
-                        Text(globalController.isCapturing ? "截图处理中…" : "截图翻译")
-                            .foregroundStyle(.primary)
-                    }
+                    MenuCaptureIcon(kind: .translation)
+                    Text(globalController.isCapturing ? "截图处理中…" : "截图翻译")
+                        .foregroundStyle(.primary)
                     Text(globalController.screenshotShortcutDescription)
                         .foregroundStyle(.secondary)
                 }
@@ -122,7 +146,8 @@ struct MenuBarView: View {
                 globalController.recognizeScreenshot()
             } label: {
                 HStack(spacing: 6) {
-                    Label("截图 OCR", systemImage: "doc.text.viewfinder")
+                    MenuCaptureIcon(kind: .ocr)
+                    Text("截图 OCR")
                         .foregroundStyle(.primary)
                     Text(globalController.ocrShortcutDescription)
                         .foregroundStyle(.secondary)
@@ -136,7 +161,8 @@ struct MenuBarView: View {
                 globalController.toggleQuickTranslationInput()
             } label: {
                 HStack(spacing: 6) {
-                    Label("快捷翻译输入框", systemImage: "text.magnifyingglass")
+                    MenuCaptureIcon(kind: .quickInput)
+                    Text("快捷翻译输入框")
                         .foregroundStyle(.primary)
                     Text(globalController.quickInputShortcutDescription)
                         .foregroundStyle(.secondary)
