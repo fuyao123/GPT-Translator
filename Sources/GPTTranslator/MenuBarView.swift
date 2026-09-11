@@ -104,7 +104,7 @@ struct MenuBarView: View {
             }
             .foregroundStyle(menuPreferenceColor)
 
-            Toggle("选中后显示翻译图标", isOn: Binding(
+            Toggle("显示翻译图标", isOn: Binding(
                 get: { globalController.selectionTriggerMode == .button },
                 set: { globalController.setShowSelectionTranslationButton($0) }
             ))

@@ -1243,7 +1243,10 @@ final class GlobalTranslationController: NSObject, ObservableObject {
 
         let button = HoverTranslationButton(frame: NSRect(x: 0, y: 0, width: 38, height: 38))
         button.image = NSImage(systemSymbolName: "character.bubble.fill", accessibilityDescription: "翻译")
+        button.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 17, weight: .semibold)
+        button.contentTintColor = .labelColor
         button.imageScaling = .scaleProportionallyUpOrDown
+        button.alphaValue = 1
         button.bezelStyle = .texturedRounded
         button.isBordered = true
         button.toolTip = "移到这里翻译所选文字"
