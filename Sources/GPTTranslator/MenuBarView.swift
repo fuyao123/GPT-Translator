@@ -104,6 +104,13 @@ struct MenuBarView: View {
             }
             .foregroundStyle(menuPreferenceColor)
 
+            Toggle("选中后显示翻译图标", isOn: Binding(
+                get: { globalController.selectionTriggerMode == .button },
+                set: { globalController.setShowSelectionTranslationButton($0) }
+            ))
+            .foregroundStyle(menuPreferenceColor)
+            .help("关闭时选中文字后直接翻译；开启后将鼠标移到图标上翻译")
+
             Toggle("翻译中文内容", isOn: Binding(
                 get: { viewModel.translateChineseContent },
                 set: {

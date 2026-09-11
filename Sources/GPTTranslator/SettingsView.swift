@@ -156,9 +156,9 @@ struct SettingsView: View {
                     ))
                     Toggle("选中后显示翻译图标", isOn: Binding(
                         get: { globalController.selectionTriggerMode == .button },
-                        set: { globalController.selectionTriggerMode = $0 ? .button : .automatic }
+                        set: { globalController.setShowSelectionTranslationButton($0) }
                     ))
-                    Text("未勾选时，选中文字后直接翻译；勾选后先显示翻译图标，点击图标再翻译。")
+                    Text("未勾选时，选中文字后直接翻译；勾选后先显示翻译图标，将鼠标移到图标上即可翻译。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

@@ -443,6 +443,14 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         }
     }
 
+    func setShowSelectionTranslationButton(_ showButton: Bool) {
+        selectionTriggerMode = showButton ? .button : .automatic
+        UserDefaults.standard.set(showSelectionButton, forKey: "showSelectionButton")
+        UserDefaults.standard.set(autoTranslateSelection, forKey: "autoTranslateSelection")
+        if !showButton { hideFloatingButton() }
+        logger.info("Selection translation button mode=\(showButton, privacy: .public)")
+    }
+
     var appleTranslationService: AppleTranslationService {
         guard let viewModel else { preconditionFailure("Translation controller is not connected") }
         return viewModel.appleService
@@ -1233,14 +1241,17 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         pendingSelectionText = text
         pendingSelectionLocation = location
 
-        let button = NSButton(frame: NSRect(x: 0, y: 0, width: 38, height: 38))
+        let button = HoverTranslationButton(frame: NSRect(x: 0, y: 0, width: 38, height: 38))
         button.image = NSImage(systemSymbolName: "character.bubble.fill", accessibilityDescription: "翻译")
         button.imageScaling = .scaleProportionallyUpOrDown
         button.bezelStyle = .texturedRounded
         button.isBordered = true
-        button.toolTip = "翻译所选文字"
+        button.toolTip = "移到这里翻译所选文字"
         button.target = self
         button.action = #selector(floatingButtonClicked)
+        button.onMouseEntered = { [weak self] in
+            self?.translatePendingSelection()
+        }
 
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 38, height: 38),
@@ -1268,6 +1279,10 @@ final class GlobalTranslationController: NSObject, ObservableObject {
     }
 
     @objc private func floatingButtonClicked() {
+        translatePendingSelection()
+    }
+
+    private func translatePendingSelection() {
         guard let text = pendingSelectionText else { return }
         guard viewModel?.shouldTranslateFloatingText(text) != false else {
             hideFloatingButton()
@@ -1615,6 +1630,31 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         }
         selectionStatusDismissWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.3, execute: workItem)
+    }
+}
+
+private final class HoverTranslationButton: NSButton {
+    var onMouseEntered: (() -> Void)?
+    private var hoverTrackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea {
+            removeTrackingArea(hoverTrackingArea)
+        }
+        let trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea)
+        hoverTrackingArea = trackingArea
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        onMouseEntered?()
     }
 }
 
