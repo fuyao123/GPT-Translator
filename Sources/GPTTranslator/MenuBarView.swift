@@ -98,8 +98,15 @@ struct MenuBarView: View {
                 globalController.translateScreenshot()
             } label: {
                 HStack(spacing: 6) {
-                    Label(globalController.isCapturing ? "截图处理中…" : "截图翻译", systemImage: "viewfinder")
-                        .foregroundStyle(.primary)
+                    HStack(spacing: 6) {
+                        Text("译")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 20, height: 20)
+                            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        Text(globalController.isCapturing ? "截图处理中…" : "截图翻译")
+                            .foregroundStyle(.primary)
+                    }
                     Text(globalController.screenshotShortcutDescription)
                         .foregroundStyle(.secondary)
                 }
