@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 import Vision
 
 enum ScreenshotEditorTool: String, CaseIterable, Identifiable {
+    case move
     case pen
     case rectangle
     case ellipse
@@ -17,6 +18,7 @@ enum ScreenshotEditorTool: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .move: return "移动"
         case .pen: return "画笔"
         case .rectangle: return "矩形"
         case .ellipse: return "椭圆"
@@ -28,6 +30,7 @@ enum ScreenshotEditorTool: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
+        case .move: return "hand.draw"
         case .pen: return "pencil.tip"
         case .rectangle: return "rectangle"
         case .ellipse: return "circle"
@@ -227,6 +230,8 @@ final class ScreenshotEditorModel: ObservableObject {
     @Published var selectedTool: ScreenshotEditorTool = .pen
     @Published var selectedColor: NSColor = .systemRed
     @Published var lineWidth: CGFloat = 8
+    @Published var textFontSize: CGFloat = 32
+    @Published var selectedAnnotationID: UUID?
     @Published private(set) var annotations: [ScreenshotAnnotation] = []
     @Published var ocrText = ""
     @Published var ocrStatus = ""
@@ -241,13 +246,63 @@ final class ScreenshotEditorModel: ObservableObject {
         self.annotations = annotations
     }
 
+    var selectedAnnotationIsText: Bool {
+        guard let selectedAnnotationID else { return false }
+        return annotations.first(where: { $0.id == selectedAnnotationID })?.tool == .text
+    }
+
+    func selectAnnotation(_ id: UUID?) {
+        selectedAnnotationID = id
+        guard let id, let annotation = annotations.first(where: { $0.id == id }) else { return }
+        selectedColor = annotation.color
+        if annotation.tool == .text {
+            textFontSize = annotation.fontSize
+        }
+    }
+
+    func applySelectedColor() {
+        guard selectedTool == .move, let selectedAnnotationID else { return }
+        annotations = annotations.map { annotation in
+            guard annotation.id == selectedAnnotationID else { return annotation }
+            return ScreenshotAnnotation(
+                id: annotation.id,
+                tool: annotation.tool,
+                points: annotation.points,
+                rect: annotation.rect,
+                color: selectedColor,
+                lineWidth: annotation.lineWidth,
+                text: annotation.text,
+                fontSize: annotation.fontSize
+            )
+        }
+    }
+
+    func applySelectedTextFontSize() {
+        guard selectedTool == .move, let selectedAnnotationID else { return }
+        annotations = annotations.map { annotation in
+            guard annotation.id == selectedAnnotationID, annotation.tool == .text else { return annotation }
+            return ScreenshotAnnotation(
+                id: annotation.id,
+                tool: annotation.tool,
+                points: annotation.points,
+                rect: annotation.rect,
+                color: annotation.color,
+                lineWidth: annotation.lineWidth,
+                text: annotation.text,
+                fontSize: textFontSize
+            )
+        }
+    }
+
     func undoLastAnnotation() {
         guard !annotations.isEmpty else { return }
-        annotations.removeLast()
+        let removed = annotations.removeLast()
+        if selectedAnnotationID == removed.id { selectedAnnotationID = nil }
     }
 
     func clearAnnotations() {
         annotations.removeAll()
+        selectedAnnotationID = nil
     }
 
     func addTextAnnotation(at point: CGPoint, text: String) {
@@ -260,7 +315,7 @@ final class ScreenshotEditorModel: ObservableObject {
                 color: selectedColor,
                 lineWidth: lineWidth,
                 text: trimmedText,
-                fontSize: max(24, lineWidth * 4)
+                fontSize: textFontSize
             )
         )
     }
@@ -443,6 +498,8 @@ enum ScreenshotImageRenderer {
         context.setLineJoin(.round)
 
         switch annotation.tool {
+        case .move:
+            break
         case .pen:
             drawPen(points: annotation.points, in: context)
         case .rectangle:
@@ -572,7 +629,12 @@ final class ScreenshotCanvasView: NSView {
     var lineWidth: CGFloat = 8 {
         didSet { needsDisplay = true }
     }
+    var textFontSize: CGFloat = 32
+    var selectedAnnotationID: UUID? {
+        didSet { needsDisplay = true }
+    }
     var onAnnotationsChanged: (([ScreenshotAnnotation]) -> Void)?
+    var onSelectionChanged: ((UUID?) -> Void)?
     var onTextAnnotationRequestedWithText: ((CGPoint, String) -> Void)?
 
     private var activeStart: CGPoint?
@@ -580,6 +642,8 @@ final class ScreenshotCanvasView: NSView {
     private var activeAnnotationID = UUID()
     private var mosaicCache: [UUID: CGImage] = [:]
     private var inlineTextField: ScreenshotInlineTextField?
+    private var moveStartPoint: CGPoint?
+    private var movingAnnotation: ScreenshotAnnotation?
 
     init(image: CGImage, canvasInset: CGFloat = 16) {
         self.image = image
@@ -595,7 +659,13 @@ final class ScreenshotCanvasView: NSView {
 
     override func resetCursorRects() {
         super.resetCursorRects()
-        addCursorRect(fittedImageRect(), cursor: selectedTool == .text ? .iBeam : .crosshair)
+        let cursor: NSCursor
+        switch selectedTool {
+        case .move: cursor = .openHand
+        case .text: cursor = .iBeam
+        default: cursor = .crosshair
+        }
+        addCursorRect(fittedImageRect(), cursor: cursor)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -614,10 +684,31 @@ final class ScreenshotCanvasView: NSView {
         let border = NSBezierPath(rect: imageRect)
         border.lineWidth = 1
         border.stroke()
+
+        if selectedTool == .move,
+           let selectedAnnotationID,
+           let annotation = annotations.first(where: { $0.id == selectedAnnotationID }),
+           let selectionRect = annotationBounds(annotation) {
+            NSColor.controlAccentColor.setStroke()
+            let outline = NSBezierPath(rect: viewRect(for: selectionRect.insetBy(dx: -5, dy: -5)))
+            outline.lineWidth = 1.5
+            outline.setLineDash([5, 4], count: 2, phase: 0)
+            outline.stroke()
+        }
     }
 
     override func mouseDown(with event: NSEvent) {
         guard let point = imagePoint(for: convert(event.locationInWindow, from: nil), clamp: false) else { return }
+        if selectedTool == .move {
+            let hit = annotations.reversed().first(where: { annotationContains($0, point: point) })
+            selectedAnnotationID = hit?.id
+            onSelectionChanged?(hit?.id)
+            moveStartPoint = hit == nil ? nil : point
+            movingAnnotation = hit
+            if hit != nil { NSCursor.closedHand.set() }
+            needsDisplay = true
+            return
+        }
         if selectedTool == .text {
             showInlineTextField(at: point, viewPoint: convert(event.locationInWindow, from: nil))
             return
@@ -629,6 +720,17 @@ final class ScreenshotCanvasView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if selectedTool == .move,
+           let moveStartPoint,
+           let movingAnnotation,
+           let point = imagePoint(for: convert(event.locationInWindow, from: nil), clamp: true) {
+            let proposed = CGPoint(x: point.x - moveStartPoint.x, y: point.y - moveStartPoint.y)
+            let delta = clampedTranslation(proposed, for: movingAnnotation)
+            guard let index = annotations.firstIndex(where: { $0.id == movingAnnotation.id }) else { return }
+            annotations[index] = translated(movingAnnotation, by: delta)
+            needsDisplay = true
+            return
+        }
         guard activeStart != nil,
               let point = imagePoint(for: convert(event.locationInWindow, from: nil), clamp: true) else { return }
         if selectedTool == .pen || selectedTool == .mosaic {
@@ -640,6 +742,15 @@ final class ScreenshotCanvasView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        if selectedTool == .move {
+            if movingAnnotation != nil {
+                onAnnotationsChanged?(annotations)
+            }
+            moveStartPoint = nil
+            movingAnnotation = nil
+            NSCursor.openHand.set()
+            return
+        }
         guard let start = activeStart,
               let point = imagePoint(for: convert(event.locationInWindow, from: nil), clamp: true) else {
             resetActiveStroke()
@@ -704,6 +815,99 @@ final class ScreenshotCanvasView: NSView {
         needsDisplay = true
     }
 
+    private func annotationContains(_ annotation: ScreenshotAnnotation, point: CGPoint) -> Bool {
+        let tolerance = max(10, annotation.lineWidth / 2 + 6)
+        switch annotation.tool {
+        case .move:
+            return false
+        case .text, .rectangle, .ellipse:
+            return annotationBounds(annotation)?.insetBy(dx: -tolerance, dy: -tolerance).contains(point) == true
+        case .pen, .mosaic, .arrow:
+            guard let first = annotation.points.first else { return false }
+            if annotation.points.count == 1 {
+                return hypot(point.x - first.x, point.y - first.y) <= tolerance
+            }
+            return zip(annotation.points, annotation.points.dropFirst()).contains { segment in
+                distance(from: point, toSegmentFrom: segment.0, to: segment.1) <= tolerance
+            }
+        }
+    }
+
+    private func annotationBounds(_ annotation: ScreenshotAnnotation) -> CGRect? {
+        switch annotation.tool {
+        case .move:
+            return nil
+        case .rectangle, .ellipse:
+            return annotation.rect.standardized
+        case .text:
+            guard let point = annotation.points.first else { return nil }
+            let size = (annotation.text as NSString).size(withAttributes: [
+                .font: NSFont.systemFont(ofSize: annotation.fontSize, weight: .medium)
+            ])
+            return CGRect(origin: point, size: size)
+        case .pen, .mosaic, .arrow:
+            guard let first = annotation.points.first else { return nil }
+            var minX = first.x
+            var maxX = first.x
+            var minY = first.y
+            var maxY = first.y
+            for point in annotation.points.dropFirst() {
+                minX = min(minX, point.x)
+                maxX = max(maxX, point.x)
+                minY = min(minY, point.y)
+                maxY = max(maxY, point.y)
+            }
+            let padding = max(annotation.lineWidth / 2, 2)
+            return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+                .insetBy(dx: -padding, dy: -padding)
+        }
+    }
+
+    private func translated(_ annotation: ScreenshotAnnotation, by delta: CGPoint) -> ScreenshotAnnotation {
+        ScreenshotAnnotation(
+            id: annotation.id,
+            tool: annotation.tool,
+            points: annotation.points.map { CGPoint(x: $0.x + delta.x, y: $0.y + delta.y) },
+            rect: annotation.rect.offsetBy(dx: delta.x, dy: delta.y),
+            color: annotation.color,
+            lineWidth: annotation.lineWidth,
+            text: annotation.text,
+            fontSize: annotation.fontSize
+        )
+    }
+
+    private func clampedTranslation(_ proposed: CGPoint, for annotation: ScreenshotAnnotation) -> CGPoint {
+        guard let bounds = annotationBounds(annotation) else { return proposed }
+        let minimumX = -bounds.minX
+        let maximumX = CGFloat(image.width) - bounds.maxX
+        let minimumY = -bounds.minY
+        let maximumY = CGFloat(image.height) - bounds.maxY
+        return CGPoint(
+            x: minimumX <= maximumX ? min(max(proposed.x, minimumX), maximumX) : 0,
+            y: minimumY <= maximumY ? min(max(proposed.y, minimumY), maximumY) : 0
+        )
+    }
+
+    private func distance(from point: CGPoint, toSegmentFrom start: CGPoint, to end: CGPoint) -> CGFloat {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let lengthSquared = dx * dx + dy * dy
+        guard lengthSquared > 0 else { return hypot(point.x - start.x, point.y - start.y) }
+        let projection = min(max(((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared, 0), 1)
+        let nearest = CGPoint(x: start.x + projection * dx, y: start.y + projection * dy)
+        return hypot(point.x - nearest.x, point.y - nearest.y)
+    }
+
+    private func viewRect(for imageRect: CGRect) -> CGRect {
+        let fitted = fittedImageRect()
+        return CGRect(
+            x: fitted.minX + imageRect.minX / CGFloat(image.width) * fitted.width,
+            y: fitted.minY + imageRect.minY / CGFloat(image.height) * fitted.height,
+            width: imageRect.width / CGFloat(image.width) * fitted.width,
+            height: imageRect.height / CGFloat(image.height) * fitted.height
+        )
+    }
+
     private func fittedImageRect() -> CGRect {
         let canvas = bounds.insetBy(dx: canvasInset, dy: canvasInset)
         let imageSize = CGSize(width: image.width, height: image.height)
@@ -740,7 +944,7 @@ final class ScreenshotCanvasView: NSView {
             )
         )
         field.placeholderString = "输入文字，回车确认"
-        field.font = .systemFont(ofSize: max(14, min(22, lineWidth * 2)))
+        field.font = .systemFont(ofSize: max(14, min(28, textFontSize)))
         field.textColor = selectedColor
         field.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92)
         field.isBezeled = true
@@ -807,8 +1011,13 @@ struct ScreenshotCanvasRepresentable: NSViewRepresentable {
         view.selectedTool = model.selectedTool
         view.selectedColor = model.selectedColor
         view.lineWidth = model.lineWidth
+        view.textFontSize = model.textFontSize
+        view.selectedAnnotationID = model.selectedAnnotationID
         view.onAnnotationsChanged = { [weak model] annotations in
             model?.replaceAnnotations(annotations)
+        }
+        view.onSelectionChanged = { [weak model] id in
+            model?.selectAnnotation(id)
         }
         view.onTextAnnotationRequestedWithText = { [weak model] point, text in
             model?.addTextAnnotation(at: point, text: text)
@@ -821,6 +1030,8 @@ struct ScreenshotCanvasRepresentable: NSViewRepresentable {
         nsView.selectedTool = model.selectedTool
         nsView.selectedColor = model.selectedColor
         nsView.lineWidth = model.lineWidth
+        nsView.textFontSize = model.textFontSize
+        nsView.selectedAnnotationID = model.selectedAnnotationID
         nsView.needsDisplay = true
     }
 }
@@ -871,6 +1082,12 @@ struct CompactScreenshotEditorView: View {
         .frame(width: panelWidth)
         .background(Color.clear)
         .onExitCommand(perform: onCancel)
+        .onChange(of: model.selectedColor) { _ in
+            model.applySelectedColor()
+        }
+        .onChange(of: model.textFontSize) { _ in
+            model.applySelectedTextFontSize()
+        }
     }
 
     private var screenshotCanvas: some View {
@@ -1005,19 +1222,36 @@ struct CompactScreenshotEditorView: View {
 
                 divider
 
-                Image(systemName: model.selectedTool == .mosaic ? "square.grid.3x3.fill" : "pencil.tip")
-                    .foregroundStyle(.secondary)
-                Slider(
-                    value: $model.lineWidth,
-                    in: model.selectedTool == .mosaic ? 16...100 : 2...30,
-                    step: 1
-                )
-                .frame(width: 120)
-                .help("笔触粗细：\(Int(model.lineWidth))")
-                Text("\(Int(model.lineWidth))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, alignment: .trailing)
+                if model.selectedTool == .text || (model.selectedTool == .move && model.selectedAnnotationIsText) {
+                    Image(systemName: "textformat.size")
+                        .foregroundStyle(.secondary)
+                    Slider(value: $model.textFontSize, in: 12...96, step: 1)
+                        .frame(width: 120)
+                        .help("文字字号：\(Int(model.textFontSize))")
+                    Text("\(Int(model.textFontSize))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, alignment: .trailing)
+                } else if model.selectedTool == .move {
+                    Label("拖动标注", systemImage: "hand.draw")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 160, alignment: .leading)
+                } else {
+                    Image(systemName: model.selectedTool == .mosaic ? "square.grid.3x3.fill" : "pencil.tip")
+                        .foregroundStyle(.secondary)
+                    Slider(
+                        value: $model.lineWidth,
+                        in: model.selectedTool == .mosaic ? 16...100 : 2...30,
+                        step: 1
+                    )
+                    .frame(width: 120)
+                    .help("笔触粗细：\(Int(model.lineWidth))")
+                    Text("\(Int(model.lineWidth))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, alignment: .trailing)
+                }
             }
             .padding(.horizontal, 13)
             .padding(.vertical, 6)
@@ -1198,6 +1432,12 @@ struct ScreenshotEditorView: View {
             ocrPanel
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .onChange(of: model.selectedColor) { _ in
+            model.applySelectedColor()
+        }
+        .onChange(of: model.textFontSize) { _ in
+            model.applySelectedTextFontSize()
+        }
     }
 
     private var toolbar: some View {
@@ -1250,13 +1490,28 @@ struct ScreenshotEditorView: View {
                 )
             }
 
-            Picker("笔触", selection: $model.lineWidth) {
-                Text("细").tag(CGFloat(4))
-                Text("中").tag(CGFloat(8))
-                Text("粗").tag(CGFloat(14))
+            if model.selectedTool == .text || (model.selectedTool == .move && model.selectedAnnotationIsText) {
+                HStack(spacing: 5) {
+                    Image(systemName: "textformat.size")
+                    Slider(value: $model.textFontSize, in: 12...96, step: 1)
+                    Text("\(Int(model.textFontSize))")
+                        .font(.caption.monospacedDigit())
+                        .frame(width: 24, alignment: .trailing)
+                }
+                .frame(width: 150)
+                .help("文字字号")
+            } else if model.selectedTool == .move {
+                Label("拖动标注", systemImage: "hand.draw")
+                    .foregroundStyle(.secondary)
+            } else {
+                Picker("笔触", selection: $model.lineWidth) {
+                    Text("细").tag(CGFloat(4))
+                    Text("中").tag(CGFloat(8))
+                    Text("粗").tag(CGFloat(14))
+                }
+                .frame(width: 66)
+                .help("标注笔触粗细")
             }
-            .frame(width: 66)
-            .help("标注笔触粗细")
 
             Spacer(minLength: 8)
 
