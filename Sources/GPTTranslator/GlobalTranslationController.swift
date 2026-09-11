@@ -116,7 +116,6 @@ final class GlobalTranslationController: NSObject, ObservableObject {
     @Published var quickInputShortcutKey: ShortcutKey
     @Published var showInDock: Bool
     @Published var launchAtLogin: Bool
-    @Published var showingSettings = false
     @Published private(set) var isResultWindowPinned = false
     @Published var quickInputText = ""
     @Published private(set) var quickInputTranslation = ""
@@ -139,8 +138,10 @@ final class GlobalTranslationController: NSObject, ObservableObject {
     private var floatingButtonWindow: NSPanel?
     private var resultWindow: NSPanel?
     private var screenshotEditorWindow: ScreenshotEditorPanel?
+    private var screenshotEditorWindows: [ScreenshotEditorPanel] = []
     private var screenshotTranslationWindow: NSPanel?
-    private var pinnedScreenshotWindows: [NSPanel] = []
+    private var settingsWindow: NSWindow?
+    private var pinnedScreenshotWindows: [PinnedScreenshotPanel] = []
     private var quickInputWindow: QuickTranslationPanel?
     private var resultWindowAnchor: NSPoint?
     private var resultSizingSubscription: AnyCancellable?
@@ -237,10 +238,13 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         hideFloatingButton()
         resultWindow?.close()
         resultWindow = nil
-        screenshotEditorWindow?.orderOut(nil)
+        screenshotEditorWindows.forEach { $0.orderOut(nil) }
+        screenshotEditorWindows.removeAll()
         screenshotEditorWindow = nil
         screenshotTranslationWindow?.orderOut(nil)
         screenshotTranslationWindow = nil
+        settingsWindow?.close()
+        settingsWindow = nil
         pinnedScreenshotWindows.forEach { $0.orderOut(nil) }
         pinnedScreenshotWindows.removeAll()
         quickInputTranslationTask?.cancel()
@@ -262,23 +266,59 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         accessibilityTrusted = AXIsProcessTrusted()
     }
 
+    func showSettingsWindow() {
+        guard let viewModel else {
+            logger.error("Settings requested before translation controller was connected")
+            return
+        }
+        if let settingsWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            settingsWindow.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 560),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "设置"
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.contentViewController = NSHostingController(
+            rootView: SettingsView()
+                .environmentObject(viewModel)
+                .environmentObject(self)
+        )
+        settingsWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
     func translateSelection() {
         accessibilityTrusted = AXIsProcessTrusted()
         logger.info("translateSelection accessibilityTrusted=\(self.accessibilityTrusted, privacy: .public)")
-        showResultWindow(at: NSEvent.mouseLocation)
-        guard let text = selectedText(), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            logger.error("translateSelection selectedText=nil-or-empty")
-            viewModel?.errorMessage = accessibilityTrusted
-                ? "没有读取到已选中的文字。请先划词，再按 ⌘⇧T。"
-                : "需要辅助功能权限才能读取其他软件中的选中文字。"
-            return
+        let location = NSEvent.mouseLocation
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard let text = await selectedTextWithClipboardFallback(),
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                logger.error("translateSelection selectedText=nil-or-empty")
+                showResultWindow(at: location)
+                viewModel?.errorMessage = accessibilityTrusted
+                    ? "没有读取到已选中的文字。请先划词，再按 ⌘⇧T。"
+                    : "需要辅助功能权限才能读取其他软件中的选中文字。"
+                return
+            }
+            guard viewModel?.shouldTranslateFloatingText(text) != false else {
+                resultWindow?.orderOut(nil)
+                return
+            }
+            showResultWindow(at: location)
+            logger.info("translateSelection selectedTextLength=\(text.count, privacy: .public)")
+            viewModel?.translateForFloatingWindow(text)
         }
-        guard viewModel?.shouldTranslateFloatingText(text) != false else {
-            resultWindow?.orderOut(nil)
-            return
-        }
-        logger.info("translateSelection selectedTextLength=\(text.count, privacy: .public)")
-        viewModel?.translateForFloatingWindow(text)
     }
 
     @discardableResult
@@ -633,11 +673,17 @@ final class GlobalTranslationController: NSObject, ObservableObject {
 
     func translateScreenshot() {
         guard !isCapturing else { return }
-        guard let displayImage = currentDisplayImage() else { return }
-
         isCapturing = true
+        removeScreenshotEscapeMonitors()
         Task { @MainActor in
-            defer { isCapturing = false }
+            defer {
+                isCapturing = false
+                if screenshotEditorWindow != nil { installScreenshotEditorEscapeMonitors() }
+            }
+            // Keep existing screenshot windows visible so they can be included
+            // in the new screen capture, while the new overlay owns key events.
+            await Task.yield()
+            guard let displayImage = currentDisplayImage() else { return }
             do {
                 guard let selection = try await selectRegion(from: displayImage) else { return }
                 guard let recognizedText = try recognizeText(in: selection.image),
@@ -645,9 +691,12 @@ final class GlobalTranslationController: NSObject, ObservableObject {
                     viewModel?.errorMessage = "选区中没有识别到文字。"
                     return
                 }
-                guard viewModel?.shouldTranslateFloatingText(recognizedText) != false else { return }
+                guard let viewModel else {
+                    logger.error("Screenshot translation requested before translation controller was connected")
+                    return
+                }
                 showResultWindow(at: NSEvent.mouseLocation)
-                viewModel?.translateForFloatingWindow(recognizedText)
+                viewModel.translateForFloatingWindow(recognizedText)
             } catch {
                 viewModel?.errorMessage = error.localizedDescription
             }
@@ -656,11 +705,15 @@ final class GlobalTranslationController: NSObject, ObservableObject {
 
     func captureScreenshot() {
         guard !isCapturing else { return }
-        guard let displayImage = currentDisplayImage() else { return }
-
         isCapturing = true
+        removeScreenshotEscapeMonitors()
         Task { @MainActor in
-            defer { isCapturing = false }
+            defer {
+                isCapturing = false
+                if screenshotEditorWindow != nil { installScreenshotEditorEscapeMonitors() }
+            }
+            await Task.yield()
+            guard let displayImage = currentDisplayImage() else { return }
             do {
                 guard let selection = try await selectRegion(from: displayImage) else { return }
                 showScreenshotEditor(with: selection)
@@ -688,7 +741,6 @@ final class GlobalTranslationController: NSObject, ObservableObject {
     }
 
     private func showScreenshotEditor(with selection: ScreenshotSelection) {
-        closeScreenshotEditor()
         guard let screen = NSScreen.screens.first(where: { $0.frame.intersects(selection.screenRect) }) ?? NSScreen.main else { return }
         let visible = screen.visibleFrame
         let toolAreaHeight: CGFloat = 98
@@ -726,8 +778,9 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         panel.level = .screenSaver
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
-        panel.closeHandler = { [weak self] in
-            self?.closeScreenshotEditor()
+        panel.closeHandler = { [weak self, weak panel] in
+            guard let panel else { return }
+            self?.closeScreenshotEditor(panel)
         }
         panel.contentView = NSHostingView(
             rootView: CompactScreenshotEditorView(
@@ -735,15 +788,23 @@ final class GlobalTranslationController: NSObject, ObservableObject {
                 displaySize: NSSize(width: imageDisplayWidth, height: imageDisplayHeight),
                 panelWidth: panelWidth,
                 toolbarBelow: toolbarBelow,
-                onCancel: { [weak self] in self?.closeScreenshotEditor() },
+                onCancel: { [weak self, weak panel] in
+                    guard let panel else { return }
+                    self?.closeScreenshotEditor(panel)
+                },
+                onConfirm: { [weak self] in
+                    self?.closeAllScreenshotEditors()
+                },
                 onOCRTranslate: { [weak self] image in
                     self?.translateScreenshotEditorImage(image, near: selection.screenRect)
                 },
-                onPin: { [weak self] renderedImage in
-                    self?.showPinnedScreenshot(renderedImage, near: selection.screenRect)
+                onPin: { [weak self, weak panel] renderedImage in
+                    guard let panel else { return }
+                    self?.showPinnedScreenshot(renderedImage, near: selection.screenRect, replacing: panel)
                 }
             )
         )
+        screenshotEditorWindows.append(panel)
         screenshotEditorWindow = panel
         panel.orderFrontRegardless()
         installScreenshotEditorEscapeMonitors()
@@ -805,9 +866,13 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         model.translate(text, using: viewModel)
     }
 
-    private func showPinnedScreenshot(_ image: CGImage, near originalRect: CGRect) {
-        closeScreenshotEditor()
-        let panel = NSPanel(
+    private func showPinnedScreenshot(
+        _ image: CGImage,
+        near originalRect: CGRect,
+        replacing editorPanel: ScreenshotEditorPanel
+    ) {
+        closeScreenshotEditor(editorPanel)
+        let panel = PinnedScreenshotPanel(
             contentRect: originalRect,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -820,19 +885,47 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         panel.level = .floating
         panel.isMovableByWindowBackground = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.escapeHandler = { [weak self, weak panel] in
+            guard let self, let panel else { return }
+            self.closePinnedScreenshot(panel)
+        }
         panel.contentView = NSHostingView(
-            rootView: PinnedScreenshotView(image: image) { [weak self, weak panel] in
-                guard let self, let panel else { return }
-                panel.orderOut(nil)
-                self.pinnedScreenshotWindows.removeAll { $0 === panel }
-            }
+            rootView: PinnedScreenshotView(
+                image: image,
+                onFocus: { [weak panel] in
+                    panel?.makeKeyAndOrderFront(nil)
+                },
+                onClose: { [weak self, weak panel] in
+                    guard let self, let panel else { return }
+                    self.closePinnedScreenshot(panel)
+                }
+            )
         )
         pinnedScreenshotWindows.append(panel)
         panel.orderFrontRegardless()
     }
 
-    func closeScreenshotEditor() {
-        screenshotEditorWindow?.orderOut(nil)
+    private func closePinnedScreenshot(_ panel: PinnedScreenshotPanel) {
+        panel.orderOut(nil)
+        pinnedScreenshotWindows.removeAll { $0 === panel }
+    }
+
+    func closeScreenshotEditor(_ panel: ScreenshotEditorPanel? = nil) {
+        guard let target = panel ?? screenshotEditorWindow else { return }
+        target.orderOut(nil)
+        screenshotEditorWindows.removeAll { $0 === target }
+        screenshotEditorWindow = screenshotEditorWindows.last
+        screenshotTranslationWindow?.orderOut(nil)
+        screenshotTranslationWindow = nil
+        removeScreenshotEscapeMonitors()
+        if screenshotEditorWindow != nil, !isCapturing {
+            installScreenshotEditorEscapeMonitors()
+        }
+    }
+
+    private func closeAllScreenshotEditors() {
+        screenshotEditorWindows.forEach { $0.orderOut(nil) }
+        screenshotEditorWindows.removeAll()
         screenshotEditorWindow = nil
         screenshotTranslationWindow?.orderOut(nil)
         screenshotTranslationWindow = nil
@@ -843,6 +936,9 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         removeScreenshotEscapeMonitors()
         screenshotKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.keyCode == UInt16(kVK_Escape) else { return event }
+            if self?.screenshotEditorWindow?.firstResponder is NSTextView {
+                return event
+            }
             self?.closeScreenshotEditor()
             return nil
         }
@@ -974,7 +1070,7 @@ final class GlobalTranslationController: NSObject, ObservableObject {
         guard accessibilityTrusted else { return }
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 180_000_000)
-            guard let self, let text = self.selectedText(),
+            guard let self, let text = await self.selectedTextWithClipboardFallback(),
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             guard self.viewModel?.shouldTranslateFloatingText(text) != false else {
                 self.hideFloatingButton()
@@ -1175,6 +1271,58 @@ final class GlobalTranslationController: NSObject, ObservableObject {
             return nil
         }
         return selected
+    }
+
+    private func selectedTextWithClipboardFallback() async -> String? {
+        if let text = selectedText(), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return text
+        }
+        guard accessibilityTrusted,
+              let application = NSWorkspace.shared.frontmostApplication,
+              application.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return nil }
+
+        let pasteboard = NSPasteboard.general
+        let savedItems = pasteboard.pasteboardItems?.map { item in
+            item.types.reduce(into: [NSPasteboard.PasteboardType: Data]()) { values, type in
+                if let data = item.data(forType: type) { values[type] = data }
+            }
+        } ?? []
+        let previousChangeCount = pasteboard.changeCount
+
+        guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: false) else {
+            return nil
+        }
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+        keyDown.postToPid(application.processIdentifier)
+        keyUp.postToPid(application.processIdentifier)
+
+        for _ in 0..<8 where pasteboard.changeCount == previousChangeCount {
+            try? await Task.sleep(nanoseconds: 40_000_000)
+        }
+        let copiedText = pasteboard.changeCount != previousChangeCount
+            ? pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            : nil
+        restorePasteboard(savedItems, to: pasteboard)
+        if let copiedText, !copiedText.isEmpty {
+            logger.debug("selectedText used clipboard fallback for pid=\(application.processIdentifier, privacy: .public)")
+            return copiedText
+        }
+        return nil
+    }
+
+    private func restorePasteboard(
+        _ savedItems: [[NSPasteboard.PasteboardType: Data]],
+        to pasteboard: NSPasteboard
+    ) {
+        pasteboard.clearContents()
+        let items = savedItems.map { values -> NSPasteboardItem in
+            let item = NSPasteboardItem()
+            values.forEach { type, data in item.setData(data, forType: type) }
+            return item
+        }
+        if !items.isEmpty { pasteboard.writeObjects(items) }
     }
 
     private func selectRegion(from image: CGImage) async throws -> ScreenshotSelection? {
@@ -1512,7 +1660,7 @@ private final class ScreenshotOverlayView: NSView {
         ).integral
         guard let sample = image.cropping(to: sourceRect) else { return }
 
-        let boxSize = CGSize(width: 132, height: 158)
+        let boxSize = CGSize(width: 166, height: 190)
         var origin = CGPoint(x: point.x + 20, y: point.y - boxSize.height - 20)
         if origin.x + boxSize.width > bounds.maxX { origin.x = point.x - boxSize.width - 20 }
         if origin.y < bounds.minY { origin.y = point.y + 20 }
@@ -1526,7 +1674,7 @@ private final class ScreenshotOverlayView: NSView {
         context.fill(box)
         context.restoreGState()
 
-        let preview = CGRect(x: box.minX + 6, y: box.minY + 32, width: 120, height: 120)
+        let preview = CGRect(x: box.minX + 6, y: box.minY + 64, width: 154, height: 120)
         context.saveGState()
         context.interpolationQuality = .none
         context.draw(sample, in: preview)
@@ -1537,14 +1685,29 @@ private final class ScreenshotOverlayView: NSView {
 
         let color = pixelColor(at: imagePoint) ?? .clear
         color.setFill()
-        NSBezierPath(roundedRect: CGRect(x: box.minX + 8, y: box.minY + 8, width: 16, height: 16), xRadius: 3, yRadius: 3).fill()
-        let colorValue = hexString(for: color)
-        let label = copiedColorValue == colorValue ? "已复制 \(colorValue)" : colorValue
-        (label as NSString).draw(
-            at: NSPoint(x: box.minX + 31, y: box.minY + 8),
+        NSBezierPath(roundedRect: CGRect(x: box.minX + 8, y: box.minY + 39, width: 18, height: 18), xRadius: 3, yRadius: 3).fill()
+        let hexValue = hexString(for: color)
+        let rgbValue = rgbString(for: color)
+        (hexValue as NSString).draw(
+            at: NSPoint(x: box.minX + 33, y: box.minY + 41),
             withAttributes: [
                 .foregroundColor: NSColor.labelColor,
                 .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
+            ]
+        )
+        (rgbValue as NSString).draw(
+            at: NSPoint(x: box.minX + 8, y: box.minY + 23),
+            withAttributes: [
+                .foregroundColor: NSColor.labelColor,
+                .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            ]
+        )
+        let copyHint = copiedColorValue == hexValue ? "已复制 HEX + RGB" : "⌘C 复制色号"
+        (copyHint as NSString).draw(
+            at: NSPoint(x: box.minX + 8, y: box.minY + 7),
+            withAttributes: [
+                .foregroundColor: copiedColorValue == hexValue ? NSColor.systemGreen : NSColor.secondaryLabelColor,
+                .font: NSFont.systemFont(ofSize: 10, weight: .medium)
             ]
         )
     }
@@ -1580,6 +1743,16 @@ private final class ScreenshotOverlayView: NSView {
         )
     }
 
+    private func rgbString(for color: NSColor) -> String {
+        guard let rgb = color.usingColorSpace(.deviceRGB) else { return "RGB(0, 0, 0)" }
+        return String(
+            format: "RGB(%d, %d, %d)",
+            Int((rgb.redComponent * 255).rounded()),
+            Int((rgb.greenComponent * 255).rounded()),
+            Int((rgb.blueComponent * 255).rounded())
+        )
+    }
+
     func copyCurrentColor() {
         guard let cursorPoint else { return }
         let scaleX = CGFloat(image.width) / bounds.width
@@ -1590,8 +1763,9 @@ private final class ScreenshotOverlayView: NSView {
         )
         guard let color = pixelColor(at: imagePoint) else { return }
         let value = hexString(for: color)
+        let rgbValue = rgbString(for: color)
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(value, forType: .string)
+        NSPasteboard.general.setString("\(value)\n\(rgbValue)", forType: .string)
         copiedColorValue = value
         needsDisplay = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in

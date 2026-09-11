@@ -215,7 +215,7 @@ final class TranslationViewModel: ObservableObject {
     }
 
     var currentAppVersion: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1.0"
     }
 
     func checkForUpdates(force: Bool = false) async {
@@ -847,6 +847,11 @@ final class TranslationViewModel: ObservableObject {
     }
 
     func saveSettings() {
+        persistSettings()
+        Task { await testEnabledProviderConnections() }
+    }
+
+    func persistSettings() {
         persistCurrentProviderSettings()
         UserDefaults.standard.set(provider.rawValue, forKey: "provider")
         UserDefaults.standard.set(reasoningEffort.rawValue, forKey: "reasoningEffort")
@@ -855,7 +860,6 @@ final class TranslationViewModel: ObservableObject {
         UserDefaults.standard.set(translateChineseContent, forKey: "translateChineseContent")
         UserDefaults.standard.set(translateEnglishSelectionToChinese, forKey: "translateEnglishSelectionToChinese")
         UserDefaults.standard.set(Double(resultFontSize), forKey: "resultFontSize")
-        Task { await testEnabledProviderConnections() }
     }
 
     private func persistCurrentProviderSettings() {
@@ -883,6 +887,12 @@ final class TranslationViewModel: ObservableObject {
 
     private func floatingTargetLanguage(for text: String) -> LanguageOption {
         guard translateEnglishSelectionToChinese else { return targetLanguage }
+        if isPredominantlyChinese(text) {
+            return .english
+        }
+        if looksLikeLatinText(text) {
+            return .chineseSimplified
+        }
         let recognizer = NLLanguageRecognizer()
         recognizer.processString(text)
         let hypotheses = recognizer.languageHypotheses(withMaximum: 3)
@@ -891,6 +901,19 @@ final class TranslationViewModel: ObservableObject {
             return .english
         }
         return targetLanguage
+    }
+
+    private func looksLikeLatinText(_ text: String) -> Bool {
+        let letters = text.unicodeScalars.filter { CharacterSet.letters.contains($0) }
+        guard !letters.isEmpty else { return false }
+        return letters.allSatisfy { scalar in
+            switch scalar.value {
+            case 0x0041...0x024F, 0x1E00...0x1EFF, 0x2C60...0x2C7F, 0xA720...0xA7FF:
+                return true
+            default:
+                return false
+            }
+        }
     }
 
     private func isPredominantlyChinese(_ text: String) -> Bool {

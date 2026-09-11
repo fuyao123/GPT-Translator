@@ -95,6 +95,15 @@ final class AppleTranslationService {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { throw ServiceError.languageUndetected }
 
+        // NaturalLanguage frequently labels short Simplified Chinese words whose
+        // glyphs are shared with Traditional Chinese (for example “所以” and
+        // “可以”) as zh-Hant. This app exposes Simplified Chinese as its Chinese
+        // language option, so prefer zh-Hans for Han-only text before asking the
+        // statistical recognizer and avoid a false missing-language-pack error.
+        if looksLikeHanText(trimmedText) {
+            return Locale.Language(identifier: "zh-Hans")
+        }
+
         guard let detected = NLLanguageRecognizer.dominantLanguage(for: trimmedText) else {
             if looksLikeLatinText(trimmedText) {
                 return Locale.Language(identifier: "en")
@@ -111,6 +120,9 @@ final class AppleTranslationService {
             return Locale.Language(identifier: "en")
         }
 
+        if detected == .simplifiedChinese || detected == .traditionalChinese {
+            return Locale.Language(identifier: "zh-Hans")
+        }
         return Locale.Language(identifier: detected.rawValue)
     }
 
@@ -140,6 +152,19 @@ final class AppleTranslationService {
         return letters.allSatisfy { scalar in
             switch scalar.value {
             case 0x0041...0x024F, 0x1E00...0x1EFF, 0x2C60...0x2C7F, 0xA720...0xA7FF:
+                return true
+            default:
+                return false
+            }
+        }
+    }
+
+    private func looksLikeHanText(_ text: String) -> Bool {
+        let letters = text.unicodeScalars.filter { CharacterSet.letters.contains($0) }
+        guard !letters.isEmpty else { return false }
+        return letters.allSatisfy { scalar in
+            switch scalar.value {
+            case 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF:
                 return true
             default:
                 return false

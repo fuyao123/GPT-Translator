@@ -10,7 +10,8 @@
 - 在支持划词的应用中选择文字后显示翻译按钮，点击后在原位置附近显示翻译结果
 - 按 `⌘⇧S` 截图，拖动选择区域后用 macOS Vision OCR，再翻译识别结果
 - 按 `⌘⇧A` 普通截图，使用微信式紧凑工具栏进行画笔、形状、箭头、文字、自由涂抹马赛克、置顶、复制和保存
-- 截图选区支持像素放大取色、十六进制色号和 `⌘C` 复制；截图下方可直接显示 OCR 翻译结果
+- 截图选区支持像素放大取色、HEX 与 RGB 色号和 `⌘C` 复制；截图下方可直接显示 OCR 翻译结果
+- 截图标注支持常用快捷色与连续色盘无级选色；可保留多张截图继续取景，置顶截图聚焦后可按 `Esc` 关闭
 - 按 `⌘⇧D` 打开类似 Spotlight 的快捷翻译框，自动判断中英文并互译
 - 快捷翻译框支持拖动、钉住、复制、写回原输入框，以及最近 20 条本机历史记录
 - 划词、普通截图、OCR 截图翻译和快捷翻译框均可在设置中自定义组合键与字母键，重复快捷键会提示冲突
@@ -32,13 +33,13 @@
 
 ## 运行
 
-需要 macOS 13 或更高版本、Swift 6 / Xcode Command Line Tools，以及已安装的 Codex CLI（OpenAI/ChatGPT OAuth 模式）。
+需要 macOS 13 或更高版本和 Swift 6 / Xcode Command Line Tools。若使用 OpenAI/ChatGPT OAuth 翻译源，需要自行安装 Codex CLI 并完成 `codex login`；若使用 Gemini/Google OAuth 翻译源，需要自行安装 Antigravity CLI（`agy`）并完成 Google 登录。
 
 ```bash
 swift run
 ```
 
-第一次使用 OpenAI/ChatGPT OAuth 时打开“设置”，点击“使用 ChatGPT 登录”，在浏览器完成 OAuth。Gemini/Google OAuth 源复用本机官方 `agy` CLI 登录会话，请先在终端运行 `agy` 完成 Google 登录；本应用不会读取其 OAuth Token。DeepSeek、智谱或自定义兼容 API 需要填写对应 API Key。生成并安装应用：
+第一次使用 OpenAI/ChatGPT OAuth 时，需先自行配置 Codex CLI，也可以打开应用“设置”点击“使用 ChatGPT 登录”，在浏览器完成 OAuth。Gemini/Google OAuth 源复用用户自行配置的 `agy` CLI 登录会话。本应用不附带这些 CLI，也不会读取、复制或打包 OAuth Token。DeepSeek、智谱或自定义兼容 API 需要填写对应 API Key。生成并安装应用：
 
 ```bash
 chmod +x scripts/build-app.sh
@@ -52,7 +53,7 @@ open "$HOME/Applications/GPT翻译助手.app"
 
 ## DMG 安装
 
-从 GitHub Releases 下载 `GPT-Translator-1.0.0-macOS.dmg`，打开后把“GPT 翻译助手”拖入 Applications。当前公开构建未使用 Apple Developer ID 公证；macOS 首次打开时可能需要在 Finder 中右键应用并选择“打开”。
+从 GitHub Releases 下载 `GPT-Translator-1.1.0-macOS.dmg`，打开后把“GPT 翻译助手”拖入 Applications。当前公开构建未使用 Apple Developer ID 公证；macOS 首次打开时可能需要在 Finder 中右键应用并选择“打开”。
 
 ## 隐私与凭据
 

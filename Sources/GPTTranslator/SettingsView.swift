@@ -4,7 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var viewModel: TranslationViewModel
     @EnvironmentObject private var globalController: GlobalTranslationController
-    @Environment(\.dismiss) private var dismiss
+    @State private var automaticSaveTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -173,7 +173,7 @@ struct SettingsView: View {
                         key: $globalController.translateShortcutKey
                     )
                     shortcutPicker(
-                        title: "截图翻译（OCR）",
+                        title: "截图翻译",
                         modifiers: $globalController.screenshotShortcutModifiers,
                         key: $globalController.screenshotShortcutKey
                     )
@@ -219,20 +219,6 @@ struct SettingsView: View {
                     .font(.callout)
             }
 
-            HStack {
-                Spacer()
-                Button("取消") { dismiss() }
-                    .keyboardShortcut(.escape)
-                Button("保存") {
-                    viewModel.saveSettings()
-                    if globalController.saveSelectionPreferences() {
-                        dismiss()
-                    }
-                }
-                .disabled(globalController.hasShortcutConflict)
-                .keyboardShortcut(.return)
-                .buttonStyle(.borderedProminent)
-            }
         }
         .padding(24)
         .frame(width: 680, height: 560)
@@ -241,12 +227,59 @@ struct SettingsView: View {
             globalController.refreshAccessibilityStatus()
             globalController.refreshLaunchAtLoginStatus()
         }
+        .onDisappear {
+            automaticSaveTask?.cancel()
+            saveImmediately()
+        }
+        .onChange(of: automaticSaveSnapshot) { _ in scheduleAutomaticSave() }
     }
 
     private var credentialHelp: String {
         viewModel.provider == .customAPI
             ? "支持 OpenAI Chat Completions 兼容接口；API Key 只保存在本机钥匙串中。"
             : "API Key 只保存在本机钥匙串中。"
+    }
+
+    private func scheduleAutomaticSave() {
+        automaticSaveTask?.cancel()
+        automaticSaveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled else { return }
+            saveImmediately()
+        }
+    }
+
+    private func saveImmediately() {
+        guard !globalController.hasShortcutConflict else { return }
+        viewModel.persistSettings()
+        _ = globalController.saveSelectionPreferences()
+    }
+
+    private var automaticSaveSnapshot: AutomaticSaveSnapshot {
+        AutomaticSaveSnapshot(
+            provider: viewModel.provider,
+            modelName: viewModel.modelName,
+            reasoningEffort: viewModel.reasoningEffort,
+            apiKey: viewModel.apiKey,
+            customAPIEndpoint: viewModel.customAPIEndpoint,
+            customAPIDisplayName: viewModel.customAPIDisplayName,
+            selectedCustomAPIID: viewModel.selectedCustomAPIID,
+            translateEnglishSelectionToChinese: viewModel.translateEnglishSelectionToChinese,
+            floatingSourceIDs: viewModel.floatingSourceIDs,
+            selectionEnabled: globalController.selectionEnabled,
+            autoTranslateSelection: globalController.autoTranslateSelection,
+            showSelectionButton: globalController.showSelectionButton,
+            translateShortcutModifiers: globalController.translateShortcutModifiers,
+            translateShortcutKey: globalController.translateShortcutKey,
+            screenshotShortcutModifiers: globalController.screenshotShortcutModifiers,
+            screenshotShortcutKey: globalController.screenshotShortcutKey,
+            captureShortcutModifiers: globalController.captureShortcutModifiers,
+            captureShortcutKey: globalController.captureShortcutKey,
+            quickInputShortcutModifiers: globalController.quickInputShortcutModifiers,
+            quickInputShortcutKey: globalController.quickInputShortcutKey,
+            showInDock: globalController.showInDock,
+            launchAtLogin: globalController.launchAtLogin
+        )
     }
 
     private func shortcutPicker(
@@ -274,4 +307,29 @@ struct SettingsView: View {
         }
     }
 
+}
+
+private struct AutomaticSaveSnapshot: Equatable {
+    let provider: ModelProvider
+    let modelName: String
+    let reasoningEffort: ReasoningEffort
+    let apiKey: String
+    let customAPIEndpoint: String
+    let customAPIDisplayName: String
+    let selectedCustomAPIID: UUID?
+    let translateEnglishSelectionToChinese: Bool
+    let floatingSourceIDs: Set<String>
+    let selectionEnabled: Bool
+    let autoTranslateSelection: Bool
+    let showSelectionButton: Bool
+    let translateShortcutModifiers: ShortcutModifiers
+    let translateShortcutKey: ShortcutKey
+    let screenshotShortcutModifiers: ShortcutModifiers
+    let screenshotShortcutKey: ShortcutKey
+    let captureShortcutModifiers: ShortcutModifiers
+    let captureShortcutKey: ShortcutKey
+    let quickInputShortcutModifiers: ShortcutModifiers
+    let quickInputShortcutKey: ShortcutKey
+    let showInDock: Bool
+    let launchAtLogin: Bool
 }

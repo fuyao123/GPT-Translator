@@ -30,20 +30,26 @@ struct MenuBarView: View {
             }
 
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 105), spacing: 12, alignment: .leading)],
+                columns: Array(
+                    repeating: GridItem(.flexible(minimum: 0), spacing: 8, alignment: .leading),
+                    count: 3
+                ),
                 alignment: .leading,
-                spacing: 8
+                spacing: 6
             ) {
                 ForEach(viewModel.enabledFloatingSources) { source in
                     let state = viewModel.connectionState(for: source)
-                    HStack(spacing: 7) {
+                    HStack(spacing: 5) {
                         Circle()
                             .fill(statusColor(for: state))
-                            .frame(width: 8, height: 8)
-                        Text("\(source.displayName) \(statusText(for: state))")
-                            .foregroundStyle(statusColor(for: state))
+                            .frame(width: 7, height: 7)
+                        Text(source.displayName)
+                            .foregroundStyle(.primary)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.82)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel("\(source.displayName)，\(statusText(for: state))")
                     .help(statusHelp(for: state))
                 }
             }
@@ -51,13 +57,20 @@ struct MenuBarView: View {
 
             Divider()
 
-            Toggle("启用划词翻译", isOn: Binding(
+            Toggle(isOn: Binding(
                 get: { globalController.selectionEnabled },
                 set: {
                     globalController.selectionEnabled = $0
                     globalController.saveSelectionPreferences()
                 }
-            ))
+            )) {
+                HStack(spacing: 6) {
+                    Text("启用划词翻译")
+                    Text(globalController.translateShortcutDescription)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .foregroundStyle(.secondary)
 
             Toggle("翻译中文内容", isOn: Binding(
                 get: { viewModel.translateChineseContent },
@@ -65,6 +78,7 @@ struct MenuBarView: View {
                     viewModel.setTranslateChineseContent($0)
                 }
             ))
+            .foregroundStyle(.secondary)
             .help("关闭后，划词和截图识别到中文时不调用翻译接口")
 
             Button {
@@ -72,6 +86,7 @@ struct MenuBarView: View {
             } label: {
                 HStack(spacing: 6) {
                     Label("普通截图", systemImage: "camera.viewfinder")
+                        .foregroundStyle(.primary)
                     Text(globalController.captureShortcutDescription)
                         .foregroundStyle(.secondary)
                 }
@@ -84,7 +99,8 @@ struct MenuBarView: View {
                 globalController.translateScreenshot()
             } label: {
                 HStack(spacing: 6) {
-                    Label(globalController.isCapturing ? "截图处理中…" : "截图翻译（OCR）", systemImage: "viewfinder")
+                    Label(globalController.isCapturing ? "截图处理中…" : "截图翻译", systemImage: "viewfinder")
+                        .foregroundStyle(.primary)
                     Text(globalController.screenshotShortcutDescription)
                         .foregroundStyle(.secondary)
                 }
@@ -98,6 +114,7 @@ struct MenuBarView: View {
             } label: {
                 HStack(spacing: 6) {
                     Label("快捷翻译输入框", systemImage: "text.magnifyingglass")
+                        .foregroundStyle(.primary)
                     Text(globalController.quickInputShortcutDescription)
                         .foregroundStyle(.secondary)
                 }
@@ -109,12 +126,15 @@ struct MenuBarView: View {
 
             Button("打开主窗口", systemImage: "macwindow") { showMainWindow() }
                 .buttonStyle(.borderless)
+                .foregroundStyle(.primary)
             Button("设置", systemImage: "gearshape") { showSettings() }
                 .buttonStyle(.borderless)
+                .foregroundStyle(.primary)
 
             HStack {
                 Button("退出", systemImage: "power") { NSApp.terminate(nil) }
                     .buttonStyle(.borderless)
+                    .foregroundStyle(.primary)
                 Spacer()
                 updateControl
             }
@@ -186,8 +206,7 @@ struct MenuBarView: View {
     }
 
     private func showSettings() {
-        globalController.showingSettings = true
-        showMainWindow()
+        globalController.showSettingsWindow()
     }
 
     private func statusColor(for state: ProviderConnectionState) -> Color {

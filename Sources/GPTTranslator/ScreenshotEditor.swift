@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import CoreImage
 import SwiftUI
 import UniformTypeIdentifiers
@@ -31,8 +32,8 @@ enum ScreenshotEditorTool: String, CaseIterable, Identifiable {
         case .rectangle: return "rectangle"
         case .ellipse: return "circle"
         case .arrow: return "arrow.up.right"
-        case .mosaic: return "square.grid.3x3.topleft.filled"
-        case .text: return "textformat"
+        case .mosaic: return "square.grid.3x3.fill"
+        case .text: return "character"
         }
     }
 }
@@ -64,12 +65,136 @@ enum ScreenshotAnnotationColor: String, CaseIterable, Identifiable {
     }
 }
 
+private struct ContinuousColorPalette: View {
+    @Binding var selectedColor: NSColor
+
+    var body: some View {
+        VStack(spacing: 9) {
+            GeometryReader { geometry in
+                let size = geometry.size
+                ZStack(alignment: .topLeading) {
+                    LinearGradient(
+                        colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    LinearGradient(
+                        stops: [
+                            .init(color: .white, location: 0),
+                            .init(color: .clear, location: 0.5),
+                            .init(color: .black, location: 1)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+
+                    Circle()
+                        .strokeBorder(.white, lineWidth: 2)
+                        .background(Circle().stroke(.black.opacity(0.55), lineWidth: 3))
+                        .frame(width: 14, height: 14)
+                        .position(selectionPoint(in: size))
+                        .allowsHitTesting(false)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(Color.black.opacity(0.18), lineWidth: 1)
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { updateColor(at: $0.location, in: size) }
+                )
+            }
+            .frame(width: 238, height: 142)
+
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(Color(nsColor: selectedColor))
+                    .frame(width: 15, height: 15)
+                    .overlay(Circle().stroke(Color.primary.opacity(0.25), lineWidth: 1))
+                Text(hexValue)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("拖动圆点选择颜色")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+    }
+
+    private func updateColor(at location: CGPoint, in size: CGSize) {
+        let x = min(max(location.x, 0), size.width)
+        let y = min(max(location.y, 0), size.height)
+        let hue = size.width > 0 ? x / size.width : 0
+        let vertical = size.height > 0 ? y / size.height : 0
+        let saturation = vertical <= 0.5 ? vertical * 2 : 1
+        let brightness = vertical <= 0.5 ? 1 : (1 - vertical) * 2
+        selectedColor = NSColor(
+            calibratedHue: hue,
+            saturation: saturation,
+            brightness: brightness,
+            alpha: 1
+        )
+    }
+
+    private func selectionPoint(in size: CGSize) -> CGPoint {
+        guard let rgb = selectedColor.usingColorSpace(.deviceRGB) else {
+            return CGPoint(x: 0, y: size.height / 2)
+        }
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var brightness: CGFloat = 0
+        var alpha: CGFloat = 0
+        rgb.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        let y = brightness >= 0.999
+            ? saturation * size.height / 2
+            : size.height / 2 + (1 - brightness) * size.height / 2
+        return CGPoint(x: hue * size.width, y: y)
+    }
+
+    private var hexValue: String {
+        guard let rgb = selectedColor.usingColorSpace(.deviceRGB) else { return "#000000" }
+        return String(
+            format: "#%02X%02X%02X",
+            Int((rgb.redComponent * 255).rounded()),
+            Int((rgb.greenComponent * 255).rounded()),
+            Int((rgb.blueComponent * 255).rounded())
+        )
+    }
+}
+
+private struct PolygonColorPaletteButton: View {
+    @Binding var selectedColor: NSColor
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        Button { isPresented.toggle() } label: {
+            Text("更多")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 34, height: 24)
+                .background(
+                    isPresented ? Color.accentColor.opacity(0.18) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                )
+        }
+        .buttonStyle(.plain)
+        .help("展开更多颜色")
+        .popover(isPresented: $isPresented, arrowEdge: .top) {
+            ContinuousColorPalette(selectedColor: $selectedColor)
+        }
+    }
+}
+
 struct ScreenshotAnnotation: Identifiable {
     let id: UUID
     let tool: ScreenshotEditorTool
     let points: [CGPoint]
     let rect: CGRect
-    let color: ScreenshotAnnotationColor
+    let color: NSColor
     let lineWidth: CGFloat
     let text: String
     let fontSize: CGFloat
@@ -79,7 +204,7 @@ struct ScreenshotAnnotation: Identifiable {
         tool: ScreenshotEditorTool,
         points: [CGPoint] = [],
         rect: CGRect = .zero,
-        color: ScreenshotAnnotationColor,
+        color: NSColor,
         lineWidth: CGFloat,
         text: String = "",
         fontSize: CGFloat = 32
@@ -100,7 +225,7 @@ final class ScreenshotEditorModel: ObservableObject {
     let image: CGImage
 
     @Published var selectedTool: ScreenshotEditorTool = .pen
-    @Published var selectedColor: ScreenshotAnnotationColor = .red
+    @Published var selectedColor: NSColor = .systemRed
     @Published var lineWidth: CGFloat = 8
     @Published private(set) var annotations: [ScreenshotAnnotation] = []
     @Published var ocrText = ""
@@ -310,7 +435,7 @@ enum ScreenshotImageRenderer {
         in context: CGContext,
         mosaicCache: inout [UUID: CGImage]
     ) {
-        let color = (annotation.color.nsColor.usingColorSpace(.deviceRGB) ?? annotation.color.nsColor).cgColor
+        let color = (annotation.color.usingColorSpace(.deviceRGB) ?? annotation.color).cgColor
         context.setStrokeColor(color)
         context.setFillColor(color)
         context.setLineWidth(annotation.lineWidth)
@@ -362,7 +487,7 @@ enum ScreenshotImageRenderer {
                 at: point,
                 withAttributes: [
                     .font: NSFont.systemFont(ofSize: annotation.fontSize, weight: .medium),
-                    .foregroundColor: annotation.color.nsColor
+                    .foregroundColor: annotation.color
                 ]
             )
             NSGraphicsContext.restoreGraphicsState()
@@ -435,21 +560,26 @@ final class ScreenshotCanvasView: NSView {
         didSet { needsDisplay = true }
     }
     var selectedTool: ScreenshotEditorTool = .pen {
-        didSet { needsDisplay = true }
+        didSet {
+            window?.invalidateCursorRects(for: self)
+            if selectedTool != .text { dismissInlineTextField() }
+            needsDisplay = true
+        }
     }
-    var selectedColor: ScreenshotAnnotationColor = .red {
+    var selectedColor: NSColor = .systemRed {
         didSet { needsDisplay = true }
     }
     var lineWidth: CGFloat = 8 {
         didSet { needsDisplay = true }
     }
     var onAnnotationsChanged: (([ScreenshotAnnotation]) -> Void)?
-    var onTextAnnotationRequested: ((CGPoint) -> Void)?
+    var onTextAnnotationRequestedWithText: ((CGPoint, String) -> Void)?
 
     private var activeStart: CGPoint?
     private var activePoints: [CGPoint] = []
     private var activeAnnotationID = UUID()
     private var mosaicCache: [UUID: CGImage] = [:]
+    private var inlineTextField: ScreenshotInlineTextField?
 
     init(image: CGImage, canvasInset: CGFloat = 16) {
         self.image = image
@@ -462,6 +592,11 @@ final class ScreenshotCanvasView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(fittedImageRect(), cursor: selectedTool == .text ? .iBeam : .crosshair)
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
@@ -484,7 +619,7 @@ final class ScreenshotCanvasView: NSView {
     override func mouseDown(with event: NSEvent) {
         guard let point = imagePoint(for: convert(event.locationInWindow, from: nil), clamp: false) else { return }
         if selectedTool == .text {
-            onTextAnnotationRequested?(point)
+            showInlineTextField(at: point, viewPoint: convert(event.locationInWindow, from: nil))
             return
         }
         activeStart = point
@@ -592,6 +727,69 @@ final class ScreenshotCanvasView: NSView {
             y: (y - rect.minY) / rect.height * CGFloat(image.height)
         )
     }
+
+    private func showInlineTextField(at imagePoint: CGPoint, viewPoint: CGPoint) {
+        dismissInlineTextField()
+        let fieldWidth = min(280, max(120, bounds.maxX - viewPoint.x - 8))
+        let field = ScreenshotInlineTextField(
+            frame: CGRect(
+                x: min(max(viewPoint.x, 4), bounds.maxX - fieldWidth - 4),
+                y: min(max(viewPoint.y - 14, 4), bounds.maxY - 30),
+                width: fieldWidth,
+                height: 28
+            )
+        )
+        field.placeholderString = "输入文字，回车确认"
+        field.font = .systemFont(ofSize: max(14, min(22, lineWidth * 2)))
+        field.textColor = selectedColor
+        field.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92)
+        field.isBezeled = true
+        field.bezelStyle = .roundedBezel
+        field.focusRingType = .default
+        field.onCommit = { [weak self, weak field] in
+            guard let self, let field else { return }
+            let text = field.stringValue
+            self.dismissInlineTextField()
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            self.onTextAnnotationRequestedWithText?(imagePoint, text)
+        }
+        field.onCancel = { [weak self] in self?.dismissInlineTextField() }
+        addSubview(field)
+        inlineTextField = field
+        window?.makeFirstResponder(field)
+    }
+
+    private func dismissInlineTextField() {
+        inlineTextField?.removeFromSuperview()
+        inlineTextField = nil
+    }
+}
+
+private final class ScreenshotInlineTextField: NSTextField, NSTextFieldDelegate {
+    var onCommit: (() -> Void)?
+    var onCancel: (() -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        delegate = self
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        delegate = self
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            onCommit?()
+            return true
+        }
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            onCancel?()
+            return true
+        }
+        return false
+    }
 }
 
 struct ScreenshotCanvasRepresentable: NSViewRepresentable {
@@ -612,22 +810,8 @@ struct ScreenshotCanvasRepresentable: NSViewRepresentable {
         view.onAnnotationsChanged = { [weak model] annotations in
             model?.replaceAnnotations(annotations)
         }
-        view.onTextAnnotationRequested = { [weak model] point in
-            guard let model else { return }
-            let alert = NSAlert()
-            alert.messageText = "添加文字标注"
-            alert.informativeText = "输入后将文字放置在截图中。"
-            let field = NSTextField(string: "")
-            field.placeholderString = "输入标注文字"
-            field.frame.size = NSSize(width: 300, height: 24)
-            alert.accessoryView = field
-            alert.addButton(withTitle: "添加")
-            alert.addButton(withTitle: "取消")
-            alert.window.initialFirstResponder = field
-            alert.window.makeFirstResponder(field)
-            if alert.runModal() == .alertFirstButtonReturn {
-                model.addTextAnnotation(at: point, text: field.stringValue)
-            }
+        view.onTextAnnotationRequestedWithText = { [weak model] point, text in
+            model?.addTextAnnotation(at: point, text: text)
         }
         return view
     }
@@ -644,11 +828,13 @@ struct ScreenshotCanvasRepresentable: NSViewRepresentable {
 struct CompactScreenshotEditorView: View {
     @StateObject private var model: ScreenshotEditorModel
     @State private var showingOCR = false
+    @State private var showingColorPalette = false
 
     let displaySize: NSSize
     let panelWidth: CGFloat
     let toolbarBelow: Bool
     let onCancel: () -> Void
+    let onConfirm: () -> Void
     let onOCRTranslate: (CGImage) -> Void
     let onPin: (CGImage) -> Void
 
@@ -658,6 +844,7 @@ struct CompactScreenshotEditorView: View {
         panelWidth: CGFloat,
         toolbarBelow: Bool,
         onCancel: @escaping () -> Void,
+        onConfirm: @escaping () -> Void,
         onOCRTranslate: @escaping (CGImage) -> Void,
         onPin: @escaping (CGImage) -> Void
     ) {
@@ -666,6 +853,7 @@ struct CompactScreenshotEditorView: View {
         self.panelWidth = panelWidth
         self.toolbarBelow = toolbarBelow
         self.onCancel = onCancel
+        self.onConfirm = onConfirm
         self.onOCRTranslate = onOCRTranslate
         self.onPin = onPin
     }
@@ -693,27 +881,34 @@ struct CompactScreenshotEditorView: View {
                 Rectangle()
                     .stroke(Color.accentColor, lineWidth: 1.5)
             }
-            .overlay(alignment: .topLeading) {
-                Text("\(Int(displaySize.width.rounded())) × \(Int(displaySize.height.rounded()))")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 4))
-                    .padding(6)
-            }
     }
 
     private var toolArea: some View {
         VStack(spacing: 6) {
             HStack(spacing: 3) {
                 ForEach(ScreenshotEditorTool.allCases) { tool in
-                    compactButton(tool.systemImage, help: tool.title, selected: model.selectedTool == tool) {
-                        model.selectedTool = tool
-                        if tool == .mosaic, model.lineWidth < 20 {
-                            model.lineWidth = 36
-                        } else if tool == .pen, model.lineWidth > 30 {
-                            model.lineWidth = 8
+                    if tool == .text {
+                        Button {
+                            model.selectedTool = tool
+                        } label: {
+                            Text("字")
+                                .font(.system(size: 15, weight: .semibold))
+                                .frame(width: 30, height: 28)
+                                .background(
+                                    model.selectedTool == tool ? Color.accentColor.opacity(0.2) : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .help("文字")
+                    } else {
+                        compactButton(tool.systemImage, help: tool.title, selected: model.selectedTool == tool) {
+                            model.selectedTool = tool
+                            if tool == .mosaic, model.lineWidth < 20 {
+                                model.lineWidth = 36
+                            } else if tool == .pen, model.lineWidth > 30 {
+                                model.lineWidth = 8
+                            }
                         }
                     }
                 }
@@ -778,9 +973,15 @@ struct CompactScreenshotEditorView: View {
             .shadow(color: .black.opacity(0.24), radius: 8, y: 3)
 
             HStack(spacing: 10) {
+                Text("\(Int(displaySize.width.rounded())) × \(Int(displaySize.height.rounded()))")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+
+                divider
+
                 ForEach(ScreenshotAnnotationColor.allCases) { color in
                     Button {
-                        model.selectedColor = color
+                        model.selectedColor = color.nsColor
                     } label: {
                         Circle()
                             .fill(color.swiftUIColor)
@@ -788,7 +989,7 @@ struct CompactScreenshotEditorView: View {
                             .overlay {
                                 Circle()
                                     .stroke(
-                                        model.selectedColor == color ? Color.primary : Color.clear,
+                                        model.selectedColor.isEqual(color.nsColor) ? Color.primary : Color.clear,
                                         lineWidth: 2
                                     )
                                     .padding(-3)
@@ -796,6 +997,11 @@ struct CompactScreenshotEditorView: View {
                     }
                     .buttonStyle(.plain)
                 }
+
+                PolygonColorPaletteButton(
+                    selectedColor: $model.selectedColor,
+                    isPresented: $showingColorPalette
+                )
 
                 divider
 
@@ -898,7 +1104,7 @@ struct CompactScreenshotEditorView: View {
         guard let data = renderedPNGData() else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setData(data, forType: .png)
-        onCancel()
+        onConfirm()
     }
 
     private func saveScreenshot() {
@@ -927,6 +1133,7 @@ struct CompactScreenshotEditorView: View {
 
 struct PinnedScreenshotView: View {
     let image: CGImage
+    let onFocus: () -> Void
     let onClose: () -> Void
     @State private var hovering = false
 
@@ -955,11 +1162,14 @@ struct PinnedScreenshotView: View {
             }
         }
         .onHover { hovering = $0 }
+        .contentShape(Rectangle())
+        .simultaneousGesture(TapGesture().onEnded(onFocus))
     }
 }
 
 struct ScreenshotEditorView: View {
     @StateObject private var model: ScreenshotEditorModel
+    @State private var showingColorPalette = false
     let onPinnedChanged: (Bool) -> Void
 
     init(image: CGImage, onPinnedChanged: @escaping (Bool) -> Void) {
@@ -1008,7 +1218,7 @@ struct ScreenshotEditorView: View {
             HStack(spacing: 5) {
                 ForEach(ScreenshotAnnotationColor.allCases) { color in
                     Button {
-                        model.selectedColor = color
+                        model.selectedColor = color.nsColor
                     } label: {
                         Circle()
                             .fill(color.swiftUIColor)
@@ -1016,7 +1226,7 @@ struct ScreenshotEditorView: View {
                             .overlay {
                                 Circle()
                                     .stroke(
-                                        model.selectedColor == color ? Color.primary : Color.clear,
+                                        model.selectedColor.isEqual(color.nsColor) ? Color.primary : Color.clear,
                                         lineWidth: 2
                                     )
                                     .padding(-3)
@@ -1025,6 +1235,11 @@ struct ScreenshotEditorView: View {
                     .buttonStyle(.plain)
                     .help("颜色：\(color.rawValue)")
                 }
+
+                PolygonColorPaletteButton(
+                    selectedColor: $model.selectedColor,
+                    isPresented: $showingColorPalette
+                )
             }
 
             Picker("笔触", selection: $model.lineWidth) {
@@ -1181,5 +1396,19 @@ final class ScreenshotEditorPanel: NSPanel {
 
     override func performClose(_ sender: Any?) {
         closeHandler?()
+    }
+}
+
+final class PinnedScreenshotPanel: NSPanel {
+    var escapeHandler: (() -> Void)?
+
+    override var canBecomeKey: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == UInt16(kVK_Escape) {
+            escapeHandler?()
+        } else {
+            super.keyDown(with: event)
+        }
     }
 }

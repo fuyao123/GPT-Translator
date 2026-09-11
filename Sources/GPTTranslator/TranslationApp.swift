@@ -37,12 +37,6 @@ struct TranslationApp: App {
             MenuBarTranslationIcon()
         }
         .menuBarExtraStyle(.window)
-
-        Settings {
-            SettingsView()
-                .environmentObject(viewModel)
-                .environmentObject(globalController)
-        }
     }
 }
 

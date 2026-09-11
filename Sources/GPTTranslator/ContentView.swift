@@ -17,11 +17,6 @@ struct ContentView: View {
         .overlay(alignment: .topLeading) {
             AppleTranslationBridgeHost(service: viewModel.appleService)
         }
-        .sheet(isPresented: $globalController.showingSettings) {
-            SettingsView()
-                .environmentObject(viewModel)
-                .environmentObject(globalController)
-        }
         .onChange(of: viewModel.sourceText) { _ in
             viewModel.scheduleAutomaticTranslation()
         }
@@ -43,7 +38,7 @@ struct ContentView: View {
                 .font(.title2.weight(.semibold))
             Spacer()
             Button {
-                globalController.showingSettings = true
+                globalController.showSettingsWindow()
             } label: {
                 Label("设置", systemImage: "gearshape")
             }
