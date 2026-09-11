@@ -44,32 +44,45 @@ private struct MenuBarTranslationIcon: View {
     let selectionEnabled: Bool
 
     var body: some View {
-        HStack(spacing: 2) {
-            Group {
-                if let iconURL = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png"),
-                   let icon = NSImage(contentsOf: iconURL) {
-                    Image(nsImage: templateImage(icon))
-                        .interpolation(.high)
-                } else {
-                    Image(systemName: "character.bubble.fill")
-                        .resizable()
-                        .scaledToFit()
-                }
-            }
-            .frame(width: 20, height: 17)
-
-            if !selectionEnabled {
-                Text("关")
-                    .font(.system(size: 9, weight: .bold))
-                    .fixedSize()
+        Group {
+            if let icon = renderedIcon(enabled: selectionEnabled) {
+                Image(nsImage: icon)
+                    .interpolation(.high)
+            } else {
+                Image(systemName: selectionEnabled ? "character.bubble.fill" : "character.bubble")
+                    .resizable()
+                    .scaledToFit()
             }
         }
+        .frame(width: 20, height: 17)
         .id(selectionEnabled)
         .accessibilityLabel(selectionEnabled ? "AI 翻译助手，划词翻译已开启" : "AI 翻译助手，划词翻译已关闭")
     }
 
-    private func templateImage(_ image: NSImage) -> NSImage {
-        image.size = NSSize(width: 20, height: 17)
+    private func renderedIcon(enabled: Bool) -> NSImage? {
+        guard let iconURL = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png"),
+              let source = NSImage(contentsOf: iconURL) else { return nil }
+
+        let size = NSSize(width: 20, height: 17)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        source.draw(
+            in: NSRect(origin: .zero, size: size),
+            from: NSRect(origin: .zero, size: source.size),
+            operation: .sourceOver,
+            fraction: enabled ? 1 : 0.44,
+            respectFlipped: true,
+            hints: [.interpolation: NSImageInterpolation.high]
+        )
+        if !enabled {
+            let slash = NSBezierPath()
+            slash.move(to: NSPoint(x: 3.2, y: 2.2))
+            slash.line(to: NSPoint(x: 16.8, y: 14.8))
+            slash.lineWidth = 1.35
+            NSColor.black.withAlphaComponent(0.88).setStroke()
+            slash.stroke()
+        }
+        image.unlockFocus()
         image.isTemplate = true
         return image
     }
