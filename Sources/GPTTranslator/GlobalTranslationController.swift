@@ -1794,14 +1794,18 @@ private final class ScreenshotOverlayView: NSView {
             at: NSPoint(x: box.minX + 33, y: box.minY + 41),
             withAttributes: [
                 .foregroundColor: NSColor.labelColor,
-                .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
+                // `monospacedSystemFont` can produce an invalid CoreText font
+                // attribute on some macOS 26 builds and crash while the
+                // screenshot magnifier is drawn. The regular system font is
+                // stable here and the short color value remains aligned.
+                .font: NSFont.systemFont(ofSize: 12, weight: .medium)
             ]
         )
         (rgbValue as NSString).draw(
             at: NSPoint(x: box.minX + 8, y: box.minY + 23),
             withAttributes: [
                 .foregroundColor: NSColor.labelColor,
-                .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+                .font: NSFont.systemFont(ofSize: 11, weight: .regular)
             ]
         )
         let copyHint = copiedColorValue == hexValue ? "已复制 HEX + RGB" : "⌘C 复制色号"
