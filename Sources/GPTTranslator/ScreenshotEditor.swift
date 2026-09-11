@@ -172,9 +172,31 @@ private struct ContinuousColorPalette: View {
 private struct PolygonColorPaletteButton: View {
     @Binding var selectedColor: NSColor
     @Binding var isPresented: Bool
+    @State private var showsContinuousPalette = false
+
+    private static let commonColors: [NSColor] = [
+        .systemRed, .systemOrange, .systemYellow, .systemGreen,
+        .systemMint, .systemTeal, .systemCyan, .systemBlue,
+        .systemIndigo, .systemPurple, .systemPink, .systemBrown,
+        NSColor(calibratedWhite: 0.08, alpha: 1),
+        NSColor(calibratedWhite: 0.25, alpha: 1),
+        NSColor(calibratedWhite: 0.45, alpha: 1),
+        NSColor(calibratedWhite: 0.65, alpha: 1),
+        NSColor(calibratedWhite: 0.82, alpha: 1),
+        NSColor(calibratedWhite: 0.96, alpha: 1),
+        NSColor(calibratedRed: 0.95, green: 0.25, blue: 0.22, alpha: 1),
+        NSColor(calibratedRed: 0.98, green: 0.55, blue: 0.16, alpha: 1),
+        NSColor(calibratedRed: 0.25, green: 0.65, blue: 0.95, alpha: 1),
+        NSColor(calibratedRed: 0.35, green: 0.38, blue: 0.95, alpha: 1),
+        NSColor(calibratedRed: 0.55, green: 0.28, blue: 0.82, alpha: 1),
+        NSColor(calibratedRed: 0.20, green: 0.72, blue: 0.42, alpha: 1)
+    ]
 
     var body: some View {
-        Button { isPresented.toggle() } label: {
+        Button {
+            if !isPresented { showsContinuousPalette = false }
+            isPresented.toggle()
+        } label: {
             Text("更多")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.primary)
@@ -187,8 +209,79 @@ private struct PolygonColorPaletteButton: View {
         .buttonStyle(.plain)
         .help("展开更多颜色")
         .popover(isPresented: $isPresented, arrowEdge: .top) {
-            ContinuousColorPalette(selectedColor: $selectedColor)
+            VStack(spacing: 0) {
+                if showsContinuousPalette {
+                    ContinuousColorPalette(selectedColor: $selectedColor)
+                } else {
+                    CommonColorPalette(
+                        colors: Self.commonColors,
+                        selectedColor: selectedColor,
+                        onSelect: { color in
+                            selectedColor = color
+                            isPresented = false
+                        }
+                    )
+                }
+
+                Divider()
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showsContinuousPalette.toggle()
+                    }
+                } label: {
+                    Label(
+                        showsContinuousPalette ? "切换到常用色" : "切换到无极渐变",
+                        systemImage: showsContinuousPalette ? "square.grid.2x2" : "slider.horizontal.3"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderless)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+            }
+            .frame(width: 262)
         }
+    }
+}
+
+private struct CommonColorPalette: View {
+    let colors: [NSColor]
+    let selectedColor: NSColor
+    let onSelect: (NSColor) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("常用颜色")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.fixed(22), spacing: 8), count: 8),
+                spacing: 9
+            ) {
+                ForEach(Array(colors.enumerated()), id: \.offset) { _, color in
+                    Button {
+                        onSelect(color)
+                    } label: {
+                        Circle()
+                            .fill(Color(nsColor: color))
+                            .frame(width: 20, height: 20)
+                            .overlay {
+                                Circle()
+                                    .stroke(
+                                        selectedColor.isEqual(color) ? Color.primary : Color.clear,
+                                        lineWidth: 2
+                                    )
+                                    .padding(-3)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .help("选择颜色")
+                }
+            }
+        }
+        .padding(14)
     }
 }
 
