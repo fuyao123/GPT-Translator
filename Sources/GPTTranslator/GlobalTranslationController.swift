@@ -1407,6 +1407,16 @@ final class GlobalTranslationController: NSObject, ObservableObject {
 
     private func selectRegion(from image: CGImage) async throws -> ScreenshotSelection? {
         guard let screen = NSScreen.main else { return nil }
+        let previousEditor = screenshotEditorWindow
+        let previousApplication = lastExternalApplicationPID.flatMap(NSRunningApplication.init(processIdentifier:))
+
+        // Opening a MenuBarExtra can temporarily activate this regular app.
+        // Keep its main window hidden while the capture overlay is active so
+        // dismissing the overlay with Escape cannot reveal it underneath.
+        NSApp.windows
+            .filter { $0.canBecomeMain && $0.title == "GPT 翻译助手" }
+            .forEach { $0.orderOut(nil) }
+
         return await withCheckedContinuation { continuation in
             var panel: NSPanel?
             var hasFinished = false
@@ -1441,6 +1451,13 @@ final class GlobalTranslationController: NSObject, ObservableObject {
                 panel?.orderOut(nil)
                 self?.removeScreenshotEscapeMonitors()
                 self?.overlayWindow = nil
+                if rect == nil {
+                    if let previousEditor {
+                        previousEditor.orderFrontRegardless()
+                    } else {
+                        previousApplication?.activate(options: [.activateIgnoringOtherApps])
+                    }
+                }
                 continuation.resume(returning: selection)
             }
             let newPanel = NSPanel(
