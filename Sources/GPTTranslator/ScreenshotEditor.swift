@@ -793,6 +793,7 @@ final class ScreenshotCanvasView: NSView {
     override func mouseDown(with event: NSEvent) {
         guard let point = imagePoint(for: convert(event.locationInWindow, from: nil), clamp: false) else { return }
         if selectedTool == .move {
+            window?.makeFirstResponder(self)
             let hit = annotations.reversed().first(where: { annotationContains($0, point: point) })
             selectedAnnotationID = hit?.id
             onSelectionChanged?(hit?.id)
@@ -806,10 +807,26 @@ final class ScreenshotCanvasView: NSView {
             showInlineTextField(at: point, viewPoint: convert(event.locationInWindow, from: nil))
             return
         }
+        window?.makeFirstResponder(self)
         activeStart = point
         activePoints = [point]
         activeAnnotationID = UUID()
         needsDisplay = true
+    }
+
+    override func keyDown(with event: NSEvent) {
+        guard event.keyCode == 51 || event.keyCode == 117 else {
+            super.keyDown(with: event)
+            return
+        }
+
+        if selectedTool == .move, let selectedAnnotationID {
+            removeAnnotation(withID: selectedAnnotationID)
+        } else if inlineTextField == nil, !annotations.isEmpty {
+            annotations.removeLast()
+            onAnnotationsChanged?(annotations)
+            needsDisplay = true
+        }
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -905,6 +922,15 @@ final class ScreenshotCanvasView: NSView {
     private func resetActiveStroke() {
         activeStart = nil
         activePoints.removeAll()
+        needsDisplay = true
+    }
+
+    private func removeAnnotation(withID id: UUID) {
+        guard annotations.contains(where: { $0.id == id }) else { return }
+        annotations.removeAll { $0.id == id }
+        selectedAnnotationID = nil
+        onSelectionChanged?(nil)
+        onAnnotationsChanged?(annotations)
         needsDisplay = true
     }
 
@@ -1212,7 +1238,11 @@ struct CompactScreenshotEditorView: View {
                         .buttonStyle(.plain)
                         .help("文字")
                     } else {
-                        compactButton(tool.systemImage, help: tool.title, selected: model.selectedTool == tool) {
+                        compactButton(
+                            tool.systemImage,
+                            help: tool == .move ? "移动标注；按 Delete 或 Backspace 删除标注" : tool.title,
+                            selected: model.selectedTool == tool
+                        ) {
                             model.selectedTool = tool
                             if tool == .mosaic, model.lineWidth < 20 {
                                 model.lineWidth = 36
@@ -1550,7 +1580,7 @@ struct ScreenshotEditorView: View {
                             : Color.clear,
                         in: RoundedRectangle(cornerRadius: 5, style: .continuous)
                     )
-                    .help(tool.title)
+                    .help(tool == .move ? "移动标注；按 Delete 或 Backspace 删除标注" : tool.title)
                 }
             }
 
