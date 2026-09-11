@@ -17,10 +17,7 @@ private struct MenuCaptureIcon: View {
             case .capture:
                 Image(systemName: "camera.viewfinder")
             case .translation:
-                Image(systemName: "viewfinder")
-                Text("译")
-                    .font(.system(size: 6, weight: .semibold))
-                    .offset(y: 0.25)
+                Image(systemName: "character.bubble")
             case .ocr:
                 Image(systemName: "doc.text.viewfinder")
             case .quickInput:
