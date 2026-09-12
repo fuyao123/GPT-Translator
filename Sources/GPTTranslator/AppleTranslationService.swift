@@ -37,10 +37,21 @@ final class AppleTranslationService {
 
     func translate(text: String, source: LanguageOption, target: LanguageOption) async throws -> String {
         guard #available(macOS 15.0, *) else { throw ServiceError.systemTooOld }
-        let sourceLanguage = try resolvedSourceLanguage(source, text: text)
+        var sourceLanguage = try resolvedSourceLanguage(source, text: text)
         guard let targetLanguage = target.localeLanguage else { throw ServiceError.unsupportedPair }
 
-        let status = await LanguageAvailability().status(from: sourceLanguage, to: targetLanguage)
+        var status = await LanguageAvailability().status(from: sourceLanguage, to: targetLanguage)
+        if source == .auto,
+           status != .installed,
+           shouldFallbackToInstalledEnglish(text),
+           sourceLanguage.languageCode?.identifier.lowercased() != "en" {
+            let english = Locale.Language(identifier: "en")
+            let englishStatus = await LanguageAvailability().status(from: english, to: targetLanguage)
+            if englishStatus == .installed {
+                sourceLanguage = english
+                status = englishStatus
+            }
+        }
         switch status {
         case .installed:
             break
@@ -104,6 +115,14 @@ final class AppleTranslationService {
             return Locale.Language(identifier: "zh-Hans")
         }
 
+        // Source-code identifiers, product names and system components are often
+        // assigned to French, German or another supported language by the
+        // statistical recognizer. CamelCase and identifier punctuation are much
+        // stronger signals here than a short-text language probability.
+        if looksLikeTechnicalIdentifier(trimmedText) {
+            return Locale.Language(identifier: "en")
+        }
+
         guard let detected = NLLanguageRecognizer.dominantLanguage(for: trimmedText) else {
             if looksLikeLatinText(trimmedText) {
                 return Locale.Language(identifier: "en")
@@ -157,6 +176,42 @@ final class AppleTranslationService {
                 return false
             }
         }
+    }
+
+    private func looksLikeTechnicalIdentifier(_ text: String) -> Bool {
+        guard !text.contains(where: { $0.isWhitespace }),
+              text.unicodeScalars.allSatisfy({ scalar in
+                  scalar.value <= 0x7F && (
+                      CharacterSet.alphanumerics.contains(scalar)
+                      || "._-/\\".unicodeScalars.contains(scalar)
+                  )
+              }) else { return false }
+
+        let characters = Array(text)
+        let hasLetter = characters.contains(where: { $0.isLetter })
+        guard hasLetter else { return false }
+
+        let hasIdentifierSeparator = characters.contains(where: { "._-/\\".contains($0) })
+        let hasDigit = characters.contains(where: { $0.isNumber })
+        let hasInteriorUppercase = characters.dropFirst().contains(where: { $0.isUppercase })
+        let letters = characters.filter { $0.isLetter }
+        let isAcronym = letters.count >= 2 && letters.allSatisfy { $0.isUppercase }
+        return hasIdentifierSeparator || hasDigit || hasInteriorUppercase || isAcronym
+    }
+
+    private func shouldFallbackToInstalledEnglish(_ text: String) -> Bool {
+        guard looksLikeLatinText(text) else { return false }
+        if looksLikeTechnicalIdentifier(text) { return true }
+
+        let wordCount = text.split(whereSeparator: { $0.isWhitespace || $0.isPunctuation }).count
+        guard wordCount <= 4 else { return false }
+
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        let hypotheses = recognizer.languageHypotheses(withMaximum: 8)
+        let englishConfidence = hypotheses[.english] ?? 0
+        let highestConfidence = hypotheses.values.max() ?? 0
+        return englishConfidence >= 0.18 && englishConfidence >= highestConfidence * 0.5
     }
 
     private func looksLikeHanText(_ text: String) -> Bool {
