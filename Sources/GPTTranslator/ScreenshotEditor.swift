@@ -339,6 +339,19 @@ final class ScreenshotEditorModel: ObservableObject {
         self.annotations = annotations
     }
 
+    func selectTool(_ tool: ScreenshotEditorTool) {
+        selectedTool = tool
+        selectedAnnotationID = nil
+        switch tool {
+        case .mosaic:
+            if !(CGFloat(16)...CGFloat(100)).contains(lineWidth) { lineWidth = 36 }
+        case .pen, .rectangle, .ellipse, .arrow:
+            if !(CGFloat(2)...CGFloat(30)).contains(lineWidth) { lineWidth = 8 }
+        case .move, .text:
+            break
+        }
+    }
+
     var selectedAnnotationIsText: Bool {
         guard let selectedAnnotationID else { return false }
         return annotations.first(where: { $0.id == selectedAnnotationID })?.tool == .text
@@ -365,7 +378,7 @@ final class ScreenshotEditorModel: ObservableObject {
     }
 
     func applySelectedColor() {
-        guard selectedTool == .move, let selectedAnnotationID else { return }
+        guard let selectedAnnotationID else { return }
         annotations = annotations.map { annotation in
             guard annotation.id == selectedAnnotationID else { return annotation }
             return ScreenshotAnnotation(
@@ -382,7 +395,7 @@ final class ScreenshotEditorModel: ObservableObject {
     }
 
     func applySelectedTextFontSize() {
-        guard selectedTool == .move, let selectedAnnotationID else { return }
+        guard let selectedAnnotationID else { return }
         annotations = annotations.map { annotation in
             guard annotation.id == selectedAnnotationID, annotation.tool == .text else { return annotation }
             return ScreenshotAnnotation(
@@ -399,7 +412,7 @@ final class ScreenshotEditorModel: ObservableObject {
     }
 
     func applySelectedLineWidth() {
-        guard selectedTool == .move, let selectedAnnotationID else { return }
+        guard let selectedAnnotationID else { return }
         annotations = annotations.map { annotation in
             guard annotation.id == selectedAnnotationID, annotation.tool != .text else { return annotation }
             return ScreenshotAnnotation(
@@ -429,16 +442,16 @@ final class ScreenshotEditorModel: ObservableObject {
     func addTextAnnotation(at point: CGPoint, text: String) {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return }
-        annotations.append(
-            ScreenshotAnnotation(
-                tool: .text,
-                points: [point],
-                color: selectedColor,
-                lineWidth: lineWidth,
-                text: trimmedText,
-                fontSize: textFontSize
-            )
+        let annotation = ScreenshotAnnotation(
+            tool: .text,
+            points: [point],
+            color: selectedColor,
+            lineWidth: lineWidth,
+            text: trimmedText,
+            fontSize: textFontSize
         )
+        annotations.append(annotation)
+        selectedAnnotationID = annotation.id
     }
 
     func renderedImage() -> CGImage? {
@@ -832,10 +845,14 @@ final class ScreenshotCanvasView: NSView {
             return
         }
         if selectedTool == .text {
+            selectedAnnotationID = nil
+            onSelectionChanged?(nil)
             showInlineTextField(at: point, viewPoint: convert(event.locationInWindow, from: nil))
             return
         }
         window?.makeFirstResponder(self)
+        selectedAnnotationID = nil
+        onSelectionChanged?(nil)
         activeStart = point
         activePoints = [point]
         activeAnnotationID = UUID()
@@ -904,6 +921,8 @@ final class ScreenshotCanvasView: NSView {
 
         annotations.append(annotation)
         onAnnotationsChanged?(annotations)
+        selectedAnnotationID = annotation.id
+        onSelectionChanged?(annotation.id)
         resetActiveStroke()
     }
 
@@ -1256,7 +1275,7 @@ struct CompactScreenshotEditorView: View {
                 ForEach(ScreenshotEditorTool.allCases) { tool in
                     if tool == .text {
                         Button {
-                            model.selectedTool = tool
+                            model.selectTool(tool)
                         } label: {
                             Text("字")
                                 .font(.system(size: 15, weight: .semibold))
@@ -1274,12 +1293,7 @@ struct CompactScreenshotEditorView: View {
                             help: tool == .move ? "移动标注；按 Delete 或 Backspace 删除标注" : tool.title,
                             selected: model.selectedTool == tool
                         ) {
-                            model.selectedTool = tool
-                            if tool == .mosaic, model.lineWidth < 20 {
-                                model.lineWidth = 36
-                            } else if tool == .pen, model.lineWidth > 30 {
-                                model.lineWidth = 8
-                            }
+                            model.selectTool(tool)
                         }
                     }
                 }
@@ -1612,7 +1626,7 @@ struct ScreenshotEditorView: View {
             HStack(spacing: 2) {
                 ForEach(ScreenshotEditorTool.allCases) { tool in
                     Button {
-                        model.selectedTool = tool
+                        model.selectTool(tool)
                     } label: {
                         Image(systemName: tool.systemImage)
                             .frame(width: 30, height: 28)
