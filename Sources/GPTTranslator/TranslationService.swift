@@ -225,7 +225,14 @@ private final class AntigravityStreamClient: @unchecked Sendable {
         process.standardInput = inputPipe
         process.standardOutput = outputPipe
         process.standardError = errorPipe
-        errorPipe.fileHandleForReading.readabilityHandler = { handle in _ = handle.availableData }
+        errorPipe.fileHandleForReading.readabilityHandler = { handle in
+            // NSFileHandle keeps invoking the readability handler after the child exits.
+            // Stop monitoring at EOF; otherwise a failed OAuth/region request can leave the
+            // menu-bar app spinning at a full CPU core indefinitely.
+            if handle.availableData.isEmpty {
+                handle.readabilityHandler = nil
+            }
+        }
         try process.run()
 
         self.process = process
@@ -610,7 +617,13 @@ private final class CodexAppServerClient: @unchecked Sendable {
         process.standardInput = inputPipe
         process.standardOutput = outputPipe
         process.standardError = errorPipe
-        errorPipe.fileHandleForReading.readabilityHandler = { handle in _ = handle.availableData }
+        errorPipe.fileHandleForReading.readabilityHandler = { handle in
+            // A terminated app-server closes stderr. Detach the handler at EOF so an
+            // unexpected CLI exit cannot turn into a zero-byte read busy loop.
+            if handle.availableData.isEmpty {
+                handle.readabilityHandler = nil
+            }
+        }
         try process.run()
         self.process = process
         input = inputPipe.fileHandleForWriting
