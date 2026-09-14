@@ -31,7 +31,36 @@ struct AntigravityCLIService: Sendable {
 
     func warmUp() async {
         guard let executableURL else { return }
-        try? await AntigravityStreamClient.shared.warmUp(executable: executableURL)
+
+        // Starting the stream process alone does not always wake a dormant
+        // Antigravity/Gemini session. Send a tiny real turn so the first user
+        // translation does not have to perform that initialization.
+        let prompt = "Connection warm-up. Reply only with OK."
+        do {
+            _ = try await AntigravityStreamClient.shared.translate(
+                prompt: prompt,
+                executable: executableURL
+            )
+        } catch {
+            // Some installations need the desktop app to refresh its Google
+            // session before agy can complete a turn. Reopen it in the
+            // background, allow a short initialization window, then retry.
+            wakeAntigravityDesktopApp()
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            _ = try? await AntigravityStreamClient.shared.translate(
+                prompt: prompt,
+                executable: executableURL
+            )
+        }
+    }
+
+    private func wakeAntigravityDesktopApp() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-g", "-j", "-b", "com.google.antigravity"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
     }
 
     func translate(text: String, source: LanguageOption, target: LanguageOption) async throws -> String {

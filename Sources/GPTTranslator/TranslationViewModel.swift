@@ -145,6 +145,7 @@ final class TranslationViewModel: ObservableObject {
     private var cacheOrder: [String] = []
     private var comparisonTasks: [Task<Void, Never>] = []
     private var connectionMonitorTask: Task<Void, Never>?
+    private var hasStartedAntigravityWarmUp = false
     private let updateService = AppUpdateService()
     private var hasCheckedForUpdates = false
 
@@ -434,11 +435,19 @@ final class TranslationViewModel: ObservableObject {
     }
 
     func refreshLoginStatus() {
+        let shouldWarmAntigravity = provider == .antigravityOAuth
+            || floatingSourceIDs.contains(ModelProvider.antigravityOAuth.rawValue)
+        let startAntigravityWarmUp = shouldWarmAntigravity && !hasStartedAntigravityWarmUp
+        if startAntigravityWarmUp {
+            hasStartedAntigravityWarmUp = true
+        }
+
         Task {
             isLoggedIn = await codexService.loginStatus()
             if isLoggedIn, provider == .openAIChatGPT {
                 await codexService.warmUp(model: modelName, reasoning: reasoningEffort)
-            } else if provider == .antigravityOAuth {
+            }
+            if startAntigravityWarmUp {
                 await antigravityService.warmUp()
             }
         }
