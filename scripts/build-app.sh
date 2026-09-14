@@ -21,7 +21,7 @@ fi
 binary_path="$(swift build "${build_args[@]}" --show-bin-path)/GPTTranslator"
 applications_dir="${APP_OUTPUT_DIR:-$HOME/Applications}"
 app_path="$applications_dir/GPT翻译助手.app"
-app_version="${APP_VERSION:-1.1.2}"
+app_version="${APP_VERSION:-1.2.0}"
 
 mkdir -p "$applications_dir"
 rm -rf "$app_path"
